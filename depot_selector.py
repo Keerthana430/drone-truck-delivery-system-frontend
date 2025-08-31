@@ -83,6 +83,7 @@ QMessageBox {
 }
 """
 
+
 # HTML Template for depot selection map
 DEPOT_SELECTION_HTML = """<!DOCTYPE html>
 <html lang="en">
