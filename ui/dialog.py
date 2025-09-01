@@ -1,9 +1,10 @@
 """
-Depot selection dialog
+Depot selection dialog - FIXED VERSION
 """
 import os
 import json
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+import time
+from PyQt5.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout, 
                            QLabel, QFrame, QPushButton, QSpinBox, QFormLayout,
                            QMessageBox)
 from PyQt5.QtWebEngineWidgets import QWebEngineView
@@ -12,13 +13,13 @@ from config.app_config import DARK_STYLE
 from utils.nfz_data import get_depot_selection_no_fly_zones
 from resources.map_templates import DEPOT_SELECTION_HTML
 
-class DepotSelectionWindow(QMainWindow):
+class DepotSelectionWindow(QDialog):  # CHANGED: Inherit from QDialog instead of QMainWindow
     depot_selected = pyqtSignal(float, float, int)  # Signal to emit selected coordinates and customer count
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):  # ADDED: parent parameter
+        super().__init__(parent)
         self.setWindowTitle("Select Depot Location & Customer Count - India Airspace Management")
-        self.setGeometry(100, 100, 1600, 1000)  # Increased width for customer selector
+        self.setGeometry(100, 100, 1600, 1000)
         self.setMinimumSize(1400, 800)
         
         # Apply dark theme
@@ -38,15 +39,13 @@ class DepotSelectionWindow(QMainWindow):
         
         self.setup_ui()
         self.create_map_file()
+        # CHANGED: Use setWindowState for QDialog
+        self.setWindowState(Qt.WindowMaximized)
         
     def setup_ui(self):
         """Setup the user interface"""
-        # Central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        
         # Main layout - horizontal split for customer selector
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QHBoxLayout(self)  # CHANGED: Set layout directly on self
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
         
@@ -58,8 +57,8 @@ class DepotSelectionWindow(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         
         # Configuration title
-        config_title = QLabel("📦 Delivery Configuration")
-        config_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; margin-bottom: 20px;")
+        config_title = QLabel("Delivery Configuration")
+        config_title.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; margin-bottom: 20px; padding: 10px;")
         
         # Customer count selector
         customer_group = QFrame()
@@ -70,7 +69,7 @@ class DepotSelectionWindow(QMainWindow):
         customer_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
         
         self.customer_spinbox = QSpinBox()
-        self.customer_spinbox.setRange(1, 20)  # Allow 1-20 customers
+        self.customer_spinbox.setRange(1, 999)  # Allow 1-999 customers
         self.customer_spinbox.setValue(5)  # Default 5 customers
         self.customer_spinbox.setSuffix(" customers")
         self.customer_spinbox.setStyleSheet("font-size: 16px; padding: 10px;")
@@ -85,18 +84,19 @@ class DepotSelectionWindow(QMainWindow):
         
         # Depot instructions
         depot_instructions = QLabel("""
-🏭 <b>Depot Selection Instructions:</b>
+<b style="font-size: 15px;">Depot Selection Instructions:</b><br/>
 
-1️⃣ Select number of customers above
-2️⃣ Click on the map to choose depot location
-3️⃣ Avoid red No-Fly Zones
-4️⃣ Consider proximity to major cities
-5️⃣ Click "Confirm" to proceed
+1. Select number of customers above<br/>
+2. Click on the map to choose depot location<br/>
+3. Avoid red No-Fly Zones<br/>
+4. Consider proximity to major cities<br/>
+5. Click "Confirm" to proceed<br/>
 
-💡 <b>Tips:</b>
-• Higher customer count = more delivery points
-• Depot location affects delivery efficiency
-• Delivery points are generated within 15-45km radius
+
+<b style="font-size: 15px;">Tips:</b><br/>
+• Higher customer count = more delivery points<br/>
+• Depot location affects delivery efficiency<br/>
+• Delivery points are generated within 15-45km radius<br/>
         """)
         depot_instructions.setStyleSheet("font-size: 12px; color: #ffffff; padding: 15px; background-color: #404040; border-radius: 8px; line-height: 1.4;")
         depot_instructions.setWordWrap(True)
@@ -122,7 +122,7 @@ class DepotSelectionWindow(QMainWindow):
         header_layout = QHBoxLayout(header_frame)
         
         # Title
-        title_label = QLabel("🗺️ Select Your Depot Location")
+        title_label = QLabel("Select Your Depot Location")
         title_label.setStyleSheet("font-size: 28px; font-weight: bold; color: #ff6b35;")
         
         # Subtitle
@@ -151,7 +151,7 @@ class DepotSelectionWindow(QMainWindow):
         
         # Instructions
         instructions_label = QLabel(
-            "📍 Click anywhere on the map to select your depot location. "
+            "🚩Click anywhere on the map to select your depot location. "
             f"This will generate {self.customer_count} delivery points around your depot."
         )
         instructions_label.setStyleSheet("font-size: 14px; color: #cccccc;")
@@ -163,17 +163,17 @@ class DepotSelectionWindow(QMainWindow):
         self.status_label.setStyleSheet("font-size: 14px; color: #ff6b35; font-weight: bold;")
         
         # Buttons
-        self.confirm_btn = QPushButton("✅ Confirm Location & Continue")
+        self.confirm_btn = QPushButton("Confirm Location & Continue")
         self.confirm_btn.clicked.connect(self.confirm_depot_selection)
         self.confirm_btn.setEnabled(False)
         self.confirm_btn.setStyleSheet("QPushButton { padding: 15px 30px; font-size: 16px; }")
         
-        self.reset_btn = QPushButton("🔄 Reset Selection")
+        self.reset_btn = QPushButton("Reset Selection")
         self.reset_btn.clicked.connect(self.reset_selection)
         self.reset_btn.setEnabled(False)
         
-        self.cancel_btn = QPushButton("❌ Cancel")
-        self.cancel_btn.clicked.connect(self.close)
+        self.cancel_btn = QPushButton("Exit")
+        self.cancel_btn.clicked.connect(self.reject)  # CHANGED: Use reject() for QDialog
         
         # Layout controls
         controls_layout.addWidget(instructions_label)
@@ -192,9 +192,7 @@ class DepotSelectionWindow(QMainWindow):
         main_layout.addWidget(left_panel)
         main_layout.addWidget(right_panel, 1)
         
-        # Status bar
-        self.statusBar().showMessage(f"Ready to select depot location for {self.customer_count} customers - Click on the map")
-        self.statusBar().setStyleSheet("background-color: #2d2d2d; color: #ffffff; padding: 8px;")
+        # REMOVED: Status bar since QDialog doesn't have statusBar()
     
     def on_customer_count_changed(self, value):
         """Handle customer count change"""
@@ -202,12 +200,9 @@ class DepotSelectionWindow(QMainWindow):
         
         # Update instructions
         self.instructions_label.setText(
-            f"📍 Click anywhere on the map to select your depot location. "
+            f"🚩Click anywhere on the map to select your depot location. "
             f"This will generate {value} delivery points around your depot."
         )
-        
-        # Update status bar
-        self.statusBar().showMessage(f"Ready to select depot location for {value} customers - Click on the map")
         
         # Update selection display if depot is selected
         if self.selected_depot:
@@ -220,8 +215,11 @@ class DepotSelectionWindow(QMainWindow):
             self.map_view.page().runJavaScript(js_code)
     
     def create_map_file(self):
-        """Create the HTML map file"""
-        self.map_path = os.path.abspath("depot_selection_map.html")
+        """Create the HTML map file with unique name to prevent conflicts"""
+        # IMPROVED: Use unique filename to avoid map reinitialization conflicts
+        unique_id = str(int(time.time() * 1000))  # Timestamp in milliseconds
+        self.map_path = os.path.abspath(f"depot_selection_map_{unique_id}.html")
+        
         with open(self.map_path, "w", encoding="utf-8") as f:
             f.write(DEPOT_SELECTION_HTML)
         self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
@@ -286,17 +284,21 @@ class DepotSelectionWindow(QMainWindow):
             "suggested": suggested_locations
         }
         
-        js_code = f"window.initializeDepotMap({json.dumps(map_data)});"
-        self.map_view.page().runJavaScript(js_code)
-        
-        # Update customer count in map
-        js_code = f"window.updateCustomerCount({self.customer_count});"
-        self.map_view.page().runJavaScript(js_code)
-        
-        # Setup JavaScript callback for depot selection
-        self.setup_js_callback()
-        
-        print("Depot selection map initialized successfully!")
+        # IMPROVED: Add error handling for JavaScript execution
+        try:
+            js_code = f"window.initializeDepotMap({json.dumps(map_data)});"
+            self.map_view.page().runJavaScript(js_code)
+            
+            # Update customer count in map
+            js_code = f"window.updateCustomerCount({self.customer_count});"
+            self.map_view.page().runJavaScript(js_code)
+            
+            # Setup JavaScript callback for depot selection
+            self.setup_js_callback()
+            
+            print("Depot selection map initialized successfully!")
+        except Exception as e:
+            print(f"Error initializing map: {e}")
     
     def setup_js_callback(self):
         """Setup JavaScript callback for depot selection"""
@@ -328,9 +330,6 @@ class DepotSelectionWindow(QMainWindow):
         self.confirm_btn.setEnabled(True)
         self.reset_btn.setEnabled(True)
         
-        # Update status bar
-        self.statusBar().showMessage(f"Depot selected at coordinates: {lat:.6f}, {lng:.6f} for {self.customer_count} customers - Ready to confirm")
-        
         print(f"Depot selected: Latitude {lat:.6f}, Longitude {lng:.6f} for {self.customer_count} customers")
     
     def reset_selection(self):
@@ -341,19 +340,25 @@ class DepotSelectionWindow(QMainWindow):
         self.confirm_btn.setEnabled(False)
         self.reset_btn.setEnabled(False)
         
-        # Clear selection in JavaScript
+        # Clear selection in JavaScript with improved error handling
         if self.map_ready:
-            js_code = """
-            if (depotMarker) {
-                map.removeLayer(depotMarker);
-                depotMarker = null;
-            }
-            selectedCoords = null;
-            document.getElementById('selectedLocation').style.display = 'none';
-            """
-            self.map_view.page().runJavaScript(js_code)
-        
-        self.statusBar().showMessage(f"Selection reset - Click on the map to select depot location for {self.customer_count} customers")
+            try:
+                js_code = """
+                if (typeof depotMarker !== 'undefined' && depotMarker) {
+                    map.removeLayer(depotMarker);
+                    depotMarker = null;
+                }
+                if (typeof selectedCoords !== 'undefined') {
+                    selectedCoords = null;
+                }
+                var selectedElement = document.getElementById('selectedLocation');
+                if (selectedElement) {
+                    selectedElement.style.display = 'none';
+                }
+                """
+                self.map_view.page().runJavaScript(js_code)
+            except Exception as e:
+                print(f"Error resetting map selection: {e}")
     
     def confirm_depot_selection(self):
         """Confirm the depot selection and emit signal"""
@@ -368,8 +373,8 @@ class DepotSelectionWindow(QMainWindow):
             self, 
             "Confirm Depot Configuration",
             f"Confirm depot configuration:\n\n"
-            f"📍 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f"📦 Customer Count: {self.customer_count}\n\n"
+            f"🚩Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
+            f"👥 Customer Count: {self.customer_count}\n\n"
             f"This will generate {self.customer_count} delivery points around your depot.\n\n"
             f"Proceed to main application?",
             QMessageBox.Yes | QMessageBox.No,
@@ -380,13 +385,19 @@ class DepotSelectionWindow(QMainWindow):
             # Emit signal with selected coordinates and customer count
             self.depot_selected.emit(lat, lng, self.customer_count)
             print(f"Depot confirmed at: {lat:.6f}, {lng:.6f} with {self.customer_count} customers")
-            self.accept()
+            self.accept()  # This will work now since we inherit from QDialog
     
     def accept(self):
         """Override accept to clean up"""
         if hasattr(self, 'selection_timer'):
             self.selection_timer.stop()
-        super().close()
+        super().accept()  # CHANGED: Call QDialog's accept() method
+    
+    def reject(self):
+        """Override reject to clean up"""
+        if hasattr(self, 'selection_timer'):
+            self.selection_timer.stop()
+        super().reject()  # ADDED: Handle rejection properly
     
     def closeEvent(self, event):
         """Clean up on close"""
@@ -395,9 +406,10 @@ class DepotSelectionWindow(QMainWindow):
         
         # Clean up map file
         try:
-            if os.path.exists(self.map_path):
+            if hasattr(self, 'map_path') and os.path.exists(self.map_path):
                 os.remove(self.map_path)
-        except:
-            pass
+                print(f"Cleaned up map file: {self.map_path}")
+        except Exception as e:
+            print(f"Error cleaning up map file: {e}")
         
         event.accept()

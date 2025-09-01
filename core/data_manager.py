@@ -1,10 +1,8 @@
 """
 Data structures and data management for vehicle tracking and delivery system
 """
-import sys
 import time
 import random
-import math
 import numpy as np
 from collections import deque
 from datetime import datetime

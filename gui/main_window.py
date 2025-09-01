@@ -67,6 +67,8 @@ class IndiaAirspaceMap(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick_vehicle_movement)
         self.timer.start(500)  # Update every 500ms
+        # ADD THIS LINE TO OPEN IN FULL SCREEN
+        self.showMaximized()  # Opens maximized (recommended)
         
     def generate_delivery_points_around_depot(self):
         """Generate delivery points around the selected depot based on customer count"""
@@ -138,7 +140,7 @@ class IndiaAirspaceMap(QMainWindow):
         toolbar = QToolBar()
         
         # Depot change action
-        self.change_depot_action = QAction("📍 Change Depot & Customer Count", self)
+        self.change_depot_action = QAction("🚩 Change Depot & Customer Count", self)
         self.change_depot_action.triggered.connect(self.change_depot_location)
         toolbar.addAction(self.change_depot_action)
         
@@ -205,7 +207,7 @@ class IndiaAirspaceMap(QMainWindow):
         """Open depot selection dialog to change location and customer count"""
         depot_dialog = DepotSelectionWindow()
         depot_dialog.depot_selected.connect(self.on_new_depot_selected)
-        depot_dialog.exec_()
+        depot_dialog.exec()
     
     def on_new_depot_selected(self, lat, lng, customer_count):
         """Handle new depot selection with customer count"""
@@ -232,8 +234,8 @@ class IndiaAirspaceMap(QMainWindow):
             self, 
             "Configuration Updated", 
             f"Depot and configuration updated:\n\n"
-            f"📍 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f"📦 Customer Count: {customer_count}\n\n"
+            f"🚩 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
+            f" Customer Count: {customer_count}\n\n"
             f"{customer_count} delivery points have been generated around your new depot."
         )
     
