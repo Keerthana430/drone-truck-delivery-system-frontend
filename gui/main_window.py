@@ -110,7 +110,7 @@ class IndiaAirspaceMap(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         
         # Logo/Title
-        title_label = QLabel("Delivery System")
+        title_label = QLabel("India Airspace")
         title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; padding: 10px;")
         title_label.setAlignment(Qt.AlignCenter)
         
