@@ -18,15 +18,15 @@ class VehicleControlPanel(QWidget):
         vehicle_group = QGroupBox("Vehicle Tracking")
         vehicle_layout = QVBoxLayout(vehicle_group)
         
-        self.drone_toggle = QPushButton("🚁 Track Drone")
+        self.drone_toggle = QPushButton("Track Drone")
         self.drone_toggle.setCheckable(True)
         self.drone_toggle.setChecked(True)
         
-        self.etruck_toggle = QPushButton("🔋 Track E-Truck")
+        self.etruck_toggle = QPushButton("Track E-Truck")
         self.etruck_toggle.setCheckable(True)
         self.etruck_toggle.setChecked(True)
         
-        self.ftruck_toggle = QPushButton("🚚 Track Fuel Truck")
+        self.ftruck_toggle = QPushButton("Track Fuel Truck")
         self.ftruck_toggle.setCheckable(True)
         self.ftruck_toggle.setChecked(True)
         
@@ -46,10 +46,10 @@ class VehicleControlPanel(QWidget):
         map_group = QGroupBox("Map Controls")
         map_layout = QVBoxLayout(map_group)
         
-        self.show_noflyzone = QPushButton("🚫 Toggle No-Fly Zones")
+        self.show_noflyzone = QPushButton("Toggle No-Fly Zones")
         self.show_noflyzone.setCheckable(True)
         
-        self.refresh_map = QPushButton("🔄 Refresh Map")
+        self.refresh_map = QPushButton("Refresh Map")
         
         map_layout.addWidget(self.show_noflyzone)
         map_layout.addWidget(self.refresh_map)

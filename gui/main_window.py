@@ -54,6 +54,7 @@ class IndiaAirspaceMap(QMainWindow):
         self.wave_running = False
         self.wave_start_time = 0.0
         self.vehicles_started = False  # Track if vehicles are started
+        self.vehicles_paused = False   # Track if vehicles are paused/stopped
         
         # Generate delivery points around selected depot based on customer count
         self.delivery_points = self.generate_delivery_points_around_depot()
@@ -67,7 +68,7 @@ class IndiaAirspaceMap(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick_vehicle_movement)
         self.timer.start(500)  # Update every 500ms
-        # ADD THIS LINE TO OPEN IN FULL SCREEN
+        # Open in full screen
         self.showMaximized()  # Opens maximized (recommended)
         
     def generate_delivery_points_around_depot(self):
@@ -109,7 +110,7 @@ class IndiaAirspaceMap(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         
         # Logo/Title
-        title_label = QLabel("India Airspace")
+        title_label = QLabel("Delivery System")
         title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; padding: 10px;")
         title_label.setAlignment(Qt.AlignCenter)
         
@@ -161,14 +162,17 @@ class IndiaAirspaceMap(QMainWindow):
         
         toolbar.addSeparator()
         
-        # Start/Stop vehicles
-        self.start_action = QAction("▶ Start Vehicles", self)
-        self.start_action.triggered.connect(self.start_vehicles)
-        toolbar.addAction(self.start_action)
+        # Start/Stop vehicles toggle button
+        self.start_stop_action = QAction("▶ Start Vehicles", self)
+        self.start_stop_action.setCheckable(True)
+        self.start_stop_action.triggered.connect(self.toggle_start_stop_vehicles)
+        toolbar.addAction(self.start_stop_action)
         
-        self.stop_action = QAction("⏹ Stop Vehicles", self)
-        self.stop_action.triggered.connect(self.stop_vehicles)
-        toolbar.addAction(self.stop_action)
+        # Restart vehicles button (only visible when vehicles are started)
+        self.restart_action = QAction("🔄 Restart from Beginning", self)
+        self.restart_action.triggered.connect(self.restart_vehicles)
+        self.restart_action.setVisible(False)  # Hidden initially
+        toolbar.addAction(self.restart_action)
         
         # Map view
         self.map_view = QWebEngineView()
@@ -203,6 +207,148 @@ class IndiaAirspaceMap(QMainWindow):
         self.statusBar().showMessage(f"India Airspace Management System Ready - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
         self.statusBar().setStyleSheet("background-color: #2d2d2d; color: #ffffff; padding: 5px;")
     
+    def toggle_start_stop_vehicles(self):
+        """Toggle between starting and stopping vehicles with a single button"""
+        if self.start_stop_action.isChecked():
+            # Button is now in "pressed/checked" state - START vehicles
+            self.start_vehicles()
+            self.start_stop_action.setText("⏸ Pause Vehicles")
+            self.start_stop_action.setToolTip("Click to pause all vehicles")
+            self.restart_action.setVisible(True)  # Show restart button
+        else:
+            # Button is now in "unpressed/unchecked" state - PAUSE vehicles
+            self.pause_vehicles()
+            self.start_stop_action.setText("▶ Resume Vehicles")
+            self.start_stop_action.setToolTip("Click to resume vehicle simulation")
+            # Keep restart button visible when paused
+    
+    def start_vehicles(self):
+        """Start vehicle movement"""
+        if not self.map_ready:
+            print("Map not ready, cannot start vehicles")
+            return False
+            
+        if not self.vehicles_started:
+            # First time starting - create new vehicles
+            self.vehicles_started = True
+            self.vehicles_paused = False
+            self.start_wave(0)
+        else:
+            # Resume paused vehicles
+            self.vehicles_paused = False
+        
+        # Update button state programmatically if needed
+        if hasattr(self, 'start_stop_action'):
+            self.start_stop_action.setChecked(True)
+            if self.vehicles_paused:
+                self.start_stop_action.setText("⏸ Pause Vehicles")
+            else:
+                self.start_stop_action.setText("⏸ Pause Vehicles")
+        
+        # Update vehicle statuses to "Moving"
+        for name, v in self.vehicles.items():
+            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Moving", v["speed"])
+            self.vehicle_control.update_vehicle_status(vehicle_data)
+        
+        print(f"Vehicle movement started/resumed from depot with {self.customer_count} delivery points!")
+        return True
+
+    def restart_vehicles(self):
+        """Restart vehicles from the beginning of their routes"""
+        if not self.vehicles_started:
+            return
+        
+        # Reset all vehicles to start of their routes
+        for name, v in self.vehicles.items():
+            v["route_index"] = 0
+            v["progress"] = 0.0
+            v["pos"] = v["route"][0][:]  # Reset to depot position
+        
+        # Resume movement if paused
+        self.vehicles_paused = False
+        self.wave_running = True
+        self.wave_start_time = time.time()
+        
+        # Update button states
+        self.start_stop_action.setChecked(True)
+        self.start_stop_action.setText("⏸ Pause Vehicles")
+        
+        # Update vehicle statuses to "Moving"
+        for name, v in self.vehicles.items():
+            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Moving", v["speed"])
+            self.vehicle_control.update_vehicle_status(vehicle_data)
+        
+        # Update positions on map
+        self.send_vehicles_to_js()
+        
+        print("All vehicles restarted from the beginning of their routes!")
+        
+        # Show confirmation message
+        QMessageBox.information(
+            self, 
+            "Vehicles Restarted", 
+            "All vehicles have been reset to the depot and will restart their delivery routes from the beginning."
+        )
+
+    def pause_vehicles(self):
+        """Pause vehicle movement but keep them visible on map"""
+        self.vehicles_paused = True
+        # Note: We don't set vehicles_started = False, so vehicles remain on map
+        
+        # Update button state programmatically if needed
+        if hasattr(self, 'start_stop_action'):
+            self.start_stop_action.setChecked(False)
+            self.start_stop_action.setText("▶ Resume Vehicles")
+        
+        # Update vehicle statuses to "Stopped"
+        for name, v in self.vehicles.items():
+            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Stopped", 0)
+            self.vehicle_control.update_vehicle_status(vehicle_data)
+            
+        print("Vehicle movement paused! Vehicles remain visible at current positions.")
+        return True
+        """Pause vehicle movement but keep them visible on map"""
+        self.vehicles_paused = True
+        # Note: We don't set vehicles_started = False, so vehicles remain on map
+        
+        # Update button state programmatically if needed
+        if hasattr(self, 'start_stop_action'):
+            self.start_stop_action.setChecked(False)
+            self.start_stop_action.setText("▶ Resume Vehicles")
+        
+        # Update vehicle statuses to "Stopped"
+        for name, v in self.vehicles.items():
+            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Stopped", 0)
+            self.vehicle_control.update_vehicle_status(vehicle_data)
+            
+        print("Vehicle movement paused! Vehicles remain visible at current positions.")
+        return True
+
+    def stop_vehicles(self):
+        """Completely stop and clear all vehicles (this method kept for compatibility)"""
+        self.vehicles_started = False
+        self.vehicles_paused = False
+        self.wave_running = False
+        self.vehicles.clear()
+        
+        if hasattr(self, 'vehicle_control') and hasattr(self.vehicle_control, 'status_list'):
+            self.vehicle_control.status_list.clear()  # Clear status list
+        
+        if self.map_ready:
+            self.map_view.page().runJavaScript("clearVehicles();")
+        
+        # Update button state programmatically if needed
+        if hasattr(self, 'start_stop_action'):
+            self.start_stop_action.setChecked(False)
+            self.start_stop_action.setText("▶ Start Vehicles")
+            
+        # Hide restart button when vehicles are completely stopped
+        if hasattr(self, 'restart_action'):
+            self.restart_action.setVisible(False)
+            
+        print("All vehicles cleared from map!")
+        return True
+
     def change_depot_location(self):
         """Open depot selection dialog to change location and customer count"""
         depot_dialog = DepotSelectionWindow()
@@ -220,7 +366,7 @@ class IndiaAirspaceMap(QMainWindow):
         # Update delivery info widget
         self.delivery_info.update_depot(self.depot_coords, self.customer_count)
         
-        # Stop current vehicles
+        # Stop current vehicles completely when changing depot
         self.stop_vehicles()
         
         # Update UI
@@ -329,35 +475,6 @@ class IndiaAirspaceMap(QMainWindow):
         # If showing vehicles and we have vehicles data, resend them
         if show and self.vehicles:
             self.send_vehicles_to_js()
-    
-    def start_vehicles(self):
-        """Start vehicle movement"""
-        if not self.map_ready:
-            return
-        if self.vehicles_started:
-            return  # Already started
-            
-        self.vehicles_started = True
-        self.start_wave(0)
-        self.start_action.setText("🟢 Vehicles Running")
-        self.start_action.setEnabled(False)
-        self.stop_action.setEnabled(True)
-        print(f"Vehicle movement started from depot with {self.customer_count} delivery points!")
-    
-    def stop_vehicles(self):
-        """Stop vehicle movement"""
-        self.vehicles_started = False
-        self.wave_running = False
-        self.vehicles.clear()
-        self.vehicle_control.status_list.clear()  # Clear status list
-        
-        if self.map_ready:
-            self.map_view.page().runJavaScript("clearVehicles();")
-            
-        self.start_action.setText("▶ Start Vehicles")
-        self.start_action.setEnabled(True)
-        self.stop_action.setEnabled(False)
-        print("Vehicle movement stopped!")
     
     def start_wave(self, wave_index):
         """Start wave of vehicles from custom depot to customer delivery points"""
@@ -476,7 +593,7 @@ class IndiaAirspaceMap(QMainWindow):
                     "name": name,
                     "type": v["type"],
                     "pos": v["pos"],
-                    "speed": v["speed"],
+                    "speed": v["speed"] if not self.vehicles_paused else 0,  # Show 0 speed when paused
                     "weight": v["weight"]
                 }
                 for name, v in self.vehicles.items()
@@ -495,7 +612,7 @@ class IndiaAirspaceMap(QMainWindow):
     
     def tick_vehicle_movement(self):
         """Main vehicle movement tick"""
-        if not self.map_ready or not self.vehicles_started:
+        if not self.map_ready or not self.vehicles_started or self.vehicles_paused:
             return
             
         # Check if we need to start next wave
@@ -549,7 +666,9 @@ class IndiaAirspaceMap(QMainWindow):
             vehicles_moved = True
             
             # Update sidebar vehicle status
-            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Moving", v["speed"])
+            status = "Stopped" if self.vehicles_paused else "Moving"
+            speed = 0 if self.vehicles_paused else v["speed"]
+            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], status, speed)
             self.vehicle_control.update_vehicle_status(vehicle_data)
         
         # Update positions in JavaScript
@@ -564,7 +683,8 @@ class IndiaAirspaceMap(QMainWindow):
             
             # Update status bar
             active_vehicles = len([v for v in self.vehicles.values() if v["route_index"] < len(v["route"]) - 1])
-            self.statusBar().showMessage(f"Wave {self.current_wave + 1} completed - {active_vehicles} vehicles active - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
+            status_text = "paused" if self.vehicles_paused else "active"
+            self.statusBar().showMessage(f"Wave {self.current_wave + 1} completed - {active_vehicles} vehicles {status_text} - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
     
     def closeEvent(self, event):
         """Clean up on close"""

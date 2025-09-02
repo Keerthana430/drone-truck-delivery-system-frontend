@@ -374,7 +374,7 @@ class DepotSelectionWindow(QDialog):  # CHANGED: Inherit from QDialog instead of
             "Confirm Depot Configuration",
             f"Confirm depot configuration:\n\n"
             f"🚩Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f"👥 Customer Count: {self.customer_count}\n\n"
+            f"Customer Count: {self.customer_count}\n\n"
             f"This will generate {self.customer_count} delivery points around your depot.\n\n"
             f"Proceed to main application?",
             QMessageBox.Yes | QMessageBox.No,
