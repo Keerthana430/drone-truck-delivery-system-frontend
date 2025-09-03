@@ -58,16 +58,17 @@
     margin: 10px 0;
   }
   .legend {
-    position: absolute; 
-    bottom: 20px; 
-    left: 20px;
-    background: rgba(45, 45, 45, 0.95);
-    color: white;
-    padding: 15px;
-    border-radius: 8px;
-    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    backdrop-filter: blur(10px);
-    border: 1px solid #404040;
+    position: fixed !important; 
+    bottom: 20px !important; 
+    left: 20px !important;
+    background: rgba(45, 45, 45, 0.95) !important;
+    color: white !important;
+    padding: 15px !important;
+    border-radius: 8px !important;
+    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid #404040 !important;
+    z-index: 9999 !important;
   }
   .legend .dot { 
     display: inline-block; 
@@ -124,16 +125,9 @@
   function initializeDepotMap(mapData) {
     map = L.map('map').setView([mapData.center[0], mapData.center[1]], mapData.zoom);
     
-    // Use satellite view for better location selection
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
-      attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    }).addTo(map);
-
-    // Add city labels overlay
+    // Use same OpenStreetMap tiles as main window
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      opacity: 0.3,
+      maxZoom: 19, 
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 

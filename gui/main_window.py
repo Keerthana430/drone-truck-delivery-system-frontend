@@ -1,5 +1,5 @@
 """
-Main application window for India Airspace Management System
+Main application window for India Airspace Management System - ENHANCED with fleet configuration
 """
 import sys
 import os
@@ -26,7 +26,7 @@ from resources.map_templates import HTML_TEMPLATE
 from ui.dialog import DepotSelectionWindow
 
 class IndiaAirspaceMap(QMainWindow):
-    def __init__(self, depot_coords=None, customer_count=5):
+    def __init__(self, depot_coords=None, customer_count=5, electric_trucks=2, fuel_trucks=1, drones=3):
         super().__init__()
         self.setWindowTitle("India Airspace Management - No-Fly Zones Map")
         self.setGeometry(50, 50, 1800, 1000)
@@ -35,9 +35,12 @@ class IndiaAirspaceMap(QMainWindow):
         # Apply dark theme
         self.setStyleSheet(DARK_STYLE)
         
-        # Store depot coordinates and customer count
+        # Store depot coordinates and fleet configuration
         self.depot_coords = depot_coords or DEFAULT_DEPOT_COORDS
         self.customer_count = customer_count
+        self.electric_trucks = electric_trucks
+        self.fuel_trucks = fuel_trucks
+        self.drones = drones
         
         # India center coordinates for full country view
         self.map_center = MAP_CENTER
@@ -48,8 +51,6 @@ class IndiaAirspaceMap(QMainWindow):
         
         # Vehicle system
         self.vehicles = {}
-        self.waves = DEFAULT_WAVES
-        self.pause_between_waves = PAUSE_BETWEEN_WAVES
         self.current_wave = 0
         self.wave_running = False
         self.wave_start_time = 0.0
@@ -68,17 +69,18 @@ class IndiaAirspaceMap(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.tick_vehicle_movement)
         self.timer.start(500)  # Update every 500ms
+        
         # Open in full screen
-        self.showMaximized()  # Opens maximized (recommended)
+        self.showMaximized()
         
     def generate_delivery_points_around_depot(self):
         """Generate delivery points around the selected depot based on customer count"""
         points = []
         depot_lat, depot_lon = self.depot_coords
         
-        for i in range(self.customer_count):  # Use customer_count instead of fixed number
+        for i in range(self.customer_count):
             # Generate points in a rough circle around depot
-            angle = (i * (360 / self.customer_count)) + random.uniform(-20, 20)  # Distribute evenly with some randomness
+            angle = (i * (360 / self.customer_count)) + random.uniform(-20, 20)
             distance_km = random.uniform(15, 45)  # 15-45 km from depot
             
             # Convert to lat/lon offset
@@ -110,11 +112,11 @@ class IndiaAirspaceMap(QMainWindow):
         left_layout = QVBoxLayout(left_panel)
         
         # Logo/Title
-        title_label = QLabel("India Airspace")
+        title_label = QLabel("Delivery System")
         title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #ff6b35; padding: 10px;")
         title_label.setAlignment(Qt.AlignCenter)
         
-        # Depot and customer info
+        # Depot and fleet configuration info
         depot_info = QLabel(f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f}")
         depot_info.setStyleSheet("font-size: 12px; color: #cccccc; padding: 5px; text-align: center;")
         depot_info.setAlignment(Qt.AlignCenter)
@@ -123,6 +125,22 @@ class IndiaAirspaceMap(QMainWindow):
         customer_info.setStyleSheet("font-size: 12px; color: #8b5cf6; font-weight: bold; padding: 5px; text-align: center;")
         customer_info.setAlignment(Qt.AlignCenter)
         
+        # Fleet configuration display
+        fleet_info = QLabel(f"Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
+        fleet_info.setStyleSheet("font-size: 12px; color: #4CAF50; font-weight: bold; padding: 5px; text-align: center;")
+        fleet_info.setAlignment(Qt.AlignCenter)
+        
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        fleet_summary = QLabel(f"Total Vehicles: {total_vehicles}")
+        fleet_summary.setStyleSheet("font-size: 11px; color: #FF9800; padding: 2px; text-align: center;")
+        fleet_summary.setAlignment(Qt.AlignCenter)
+        
+        # Store references for updates
+        self.depot_info_label = depot_info
+        self.customer_info_label = customer_info
+        self.fleet_info_label = fleet_info
+        self.fleet_summary_label = fleet_summary
+        
         # Control panels
         self.vehicle_control = VehicleControlPanel()
         self.delivery_info = DeliveryInfoWidget(self.depot_coords, self.customer_count)
@@ -130,6 +148,8 @@ class IndiaAirspaceMap(QMainWindow):
         left_layout.addWidget(title_label)
         left_layout.addWidget(depot_info)
         left_layout.addWidget(customer_info)
+        left_layout.addWidget(fleet_info)
+        left_layout.addWidget(fleet_summary)
         left_layout.addWidget(self.vehicle_control)
         left_layout.addWidget(self.delivery_info)
         
@@ -141,7 +161,7 @@ class IndiaAirspaceMap(QMainWindow):
         toolbar = QToolBar()
         
         # Depot change action
-        self.change_depot_action = QAction("🚩 Change Depot & Customer Count", self)
+        self.change_depot_action = QAction("🚩 Change Depot & Fleet Configuration", self)
         self.change_depot_action.triggered.connect(self.change_depot_location)
         toolbar.addAction(self.change_depot_action)
         
@@ -168,10 +188,10 @@ class IndiaAirspaceMap(QMainWindow):
         self.start_stop_action.triggered.connect(self.toggle_start_stop_vehicles)
         toolbar.addAction(self.start_stop_action)
         
-        # Restart vehicles button (only visible when vehicles are started)
+        # Restart vehicles button
         self.restart_action = QAction("🔄 Restart from Beginning", self)
         self.restart_action.triggered.connect(self.restart_vehicles)
-        self.restart_action.setVisible(False)  # Hidden initially
+        self.restart_action.setVisible(False)
         toolbar.addAction(self.restart_action)
         
         # Map view
@@ -204,55 +224,290 @@ class IndiaAirspaceMap(QMainWindow):
         main_layout.addWidget(right_panel)
         
         # Status bar
-        self.statusBar().showMessage(f"India Airspace Management System Ready - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
+        self.update_status_bar()
         self.statusBar().setStyleSheet("background-color: #2d2d2d; color: #ffffff; padding: 5px;")
+    
+    def update_status_bar(self):
+        """Update status bar with current configuration"""
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        self.statusBar().showMessage(
+            f"India Airspace Management System Ready - "
+            f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | "
+            f"Customers: {self.customer_count} | "
+            f"Fleet: {total_vehicles} vehicles ({self.electric_trucks}E, {self.fuel_trucks}F, {self.drones}D)"
+        )
     
     def toggle_start_stop_vehicles(self):
         """Toggle between starting and stopping vehicles with a single button"""
         if self.start_stop_action.isChecked():
-            # Button is now in "pressed/checked" state - START vehicles
             self.start_vehicles()
             self.start_stop_action.setText("⏸ Pause Vehicles")
             self.start_stop_action.setToolTip("Click to pause all vehicles")
-            self.restart_action.setVisible(True)  # Show restart button
+            self.restart_action.setVisible(True)
         else:
-            # Button is now in "unpressed/unchecked" state - PAUSE vehicles
             self.pause_vehicles()
             self.start_stop_action.setText("▶ Resume Vehicles")
             self.start_stop_action.setToolTip("Click to resume vehicle simulation")
-            # Keep restart button visible when paused
     
     def start_vehicles(self):
-        """Start vehicle movement"""
+        """Start vehicle movement with configured fleet"""
         if not self.map_ready:
             print("Map not ready, cannot start vehicles")
             return False
             
         if not self.vehicles_started:
-            # First time starting - create new vehicles
+            # First time starting - create vehicles based on configuration
             self.vehicles_started = True
             self.vehicles_paused = False
-            self.start_wave(0)
+            self.create_configured_fleet()
         else:
             # Resume paused vehicles
             self.vehicles_paused = False
-        
-        # Update button state programmatically if needed
-        if hasattr(self, 'start_stop_action'):
-            self.start_stop_action.setChecked(True)
-            if self.vehicles_paused:
-                self.start_stop_action.setText("⏸ Pause Vehicles")
-            else:
-                self.start_stop_action.setText("⏸ Pause Vehicles")
         
         # Update vehicle statuses to "Moving"
         for name, v in self.vehicles.items():
             vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Moving", v["speed"])
             self.vehicle_control.update_vehicle_status(vehicle_data)
         
-        print(f"Vehicle movement started/resumed from depot with {self.customer_count} delivery points!")
+        print(f"Vehicle movement started with configured fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
         return True
 
+    def create_configured_fleet(self):
+        """Create vehicles based on the configured fleet numbers with proper delivery allocation"""
+        self.vehicles.clear()
+        
+        # Get delivery points
+        deliveries = self.delivery_points[:]
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        
+        print(f"\n=== FLEET ALLOCATION DEBUG ===")
+        print(f"Total delivery points generated: {len(deliveries)}")
+        print(f"Total vehicles configured: {total_vehicles}")
+        print(f"  - Electric Trucks: {self.electric_trucks}")
+        print(f"  - Fuel Trucks: {self.fuel_trucks}")
+        print(f"  - Drones: {self.drones}")
+        
+        # If we have more delivery points than vehicles, we need to select which ones to serve
+        if total_vehicles < len(deliveries):
+            print(f"WARNING: You have {len(deliveries)} delivery points but only {total_vehicles} vehicles!")
+            print(f"Only {total_vehicles} delivery points will be assigned vehicles.")
+            print(f"{len(deliveries) - total_vehicles} delivery points will remain unassigned.")
+            
+            # Select the closest delivery points to the depot for assignment
+            deliveries_with_distance = []
+            depot_lat, depot_lon = self.depot_coords
+            
+            for delivery in deliveries:
+                dist = RouteManager.haversine(depot_lat, depot_lon, delivery[0], delivery[1])
+                deliveries_with_distance.append((delivery, dist))
+            
+            # Sort by distance and take only what we can handle
+            deliveries_with_distance.sort(key=lambda x: x[1])
+            allocated_deliveries = [d[0] for d in deliveries_with_distance[:total_vehicles]]
+            
+            print(f"Selected {len(allocated_deliveries)} closest delivery points for vehicle assignment.")
+            
+        else:
+            # We have enough or more vehicles than delivery points
+            allocated_deliveries = []
+            
+            # First, assign one vehicle to each delivery point
+            for delivery in deliveries:
+                allocated_deliveries.append(delivery)
+            
+            # If we have extra vehicles, distribute them among delivery points
+            remaining_vehicles = total_vehicles - len(deliveries)
+            if remaining_vehicles > 0:
+                print(f"Distributing {remaining_vehicles} extra vehicles among {len(deliveries)} delivery points.")
+                for i in range(remaining_vehicles):
+                    allocated_deliveries.append(deliveries[i % len(deliveries)])
+            
+            # Shuffle to distribute vehicle types evenly
+            random.shuffle(allocated_deliveries)
+        
+        print(f"Final allocation list: {len(allocated_deliveries)} assignments")
+        
+        # Create vehicles and assign them to delivery points
+        vehicle_count = 0
+        
+        # Create drones based on configuration
+        for i in range(self.drones):
+            if vehicle_count >= len(allocated_deliveries):
+                break
+                
+            name = f"Drone {i+1}"
+            delivery = allocated_deliveries[vehicle_count]
+            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=True)
+            self.vehicles[name] = {
+                "type": "Drone",
+                "pos": route[0][:],
+                "route": route,
+                "route_index": 0,
+                "speed": VEHICLE_SPEEDS["Drone"],
+                "progress": 0.0,
+                "weight": random.randint(*VEHICLE_WEIGHTS["Drone"]),
+                "assigned_delivery": delivery
+            }
+            print(f"  {name} assigned to delivery point: ({delivery[0]:.4f}, {delivery[1]:.4f})")
+            vehicle_count += 1
+        
+        # Create electric trucks based on configuration
+        for i in range(self.electric_trucks):
+            if vehicle_count >= len(allocated_deliveries):
+                break
+                
+            name = f"Electric Truck {i+1}"
+            delivery = allocated_deliveries[vehicle_count]
+            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=False)
+            self.vehicles[name] = {
+                "type": "Electric Truck",
+                "pos": route[0][:],
+                "route": route,
+                "route_index": 0,
+                "speed": VEHICLE_SPEEDS["Electric Truck"],
+                "progress": 0.0,
+                "weight": random.randint(*VEHICLE_WEIGHTS["Electric Truck"]),
+                "assigned_delivery": delivery
+            }
+            print(f"  {name} assigned to delivery point: ({delivery[0]:.4f}, {delivery[1]:.4f})")
+            vehicle_count += 1
+        
+        # Create fuel trucks based on configuration
+        for i in range(self.fuel_trucks):
+            if vehicle_count >= len(allocated_deliveries):
+                break
+                
+            name = f"Fuel Truck {i+1}"
+            delivery = allocated_deliveries[vehicle_count]
+            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=False)
+            self.vehicles[name] = {
+                "type": "Fuel Truck",
+                "pos": route[0][:],
+                "route": route,
+                "route_index": 0,
+                "speed": VEHICLE_SPEEDS["Fuel Truck"],
+                "progress": 0.0,
+                "weight": random.randint(*VEHICLE_WEIGHTS["Fuel Truck"]),
+                "assigned_delivery": delivery
+            }
+            print(f"  {name} assigned to delivery point: ({delivery[0]:.4f}, {delivery[1]:.4f})")
+            vehicle_count += 1
+        
+        self.wave_running = True
+        self.wave_start_time = time.time()
+        
+        # Send vehicles to JavaScript
+        self.send_vehicles_to_js()
+        
+        # Final allocation summary
+        unique_deliveries = set()
+        for vehicle in self.vehicles.values():
+            delivery_coords = tuple(vehicle["assigned_delivery"])
+            unique_deliveries.add(delivery_coords)
+        
+        print(f"\n=== FINAL ALLOCATION SUMMARY ===")
+        print(f"Created vehicles: {len(self.vehicles)}")
+        print(f"Unique delivery points with vehicles: {len(unique_deliveries)}")
+        print(f"Total delivery points generated: {len(self.delivery_points)}")
+        print(f"Unassigned delivery points: {len(self.delivery_points) - len(unique_deliveries)}")
+        
+        if len(unique_deliveries) < len(self.delivery_points):
+            coverage_percent = (len(unique_deliveries) / len(self.delivery_points)) * 100
+            print(f"Coverage: {coverage_percent:.1f}% of delivery points have vehicles assigned")
+            print(f"\nRECOMMENDATION: To cover all delivery points, increase your fleet size to at least {len(self.delivery_points)} vehicles")
+            print(f"OR reduce the number of customers/delivery points to {total_vehicles} or fewer")
+        else:
+            print(f"SUCCESS: All delivery points have vehicles assigned!")
+        
+        print(f"================================\n")
+
+    def get_coverage_statistics(self):
+        """Get detailed coverage statistics"""
+        if not self.vehicles:
+            return "No vehicles deployed."
+        
+        # Count unique delivery assignments
+        assigned_deliveries = set()
+        for vehicle in self.vehicles.values():
+            if "assigned_delivery" in vehicle:
+                assigned_deliveries.add(tuple(vehicle["assigned_delivery"]))
+        
+        total_deliveries = len(self.delivery_points)
+        assigned_count = len(assigned_deliveries)
+        unassigned_count = total_deliveries - assigned_count
+        coverage_percent = (assigned_count / total_deliveries * 100) if total_deliveries > 0 else 0
+        
+        stats = f"Coverage Statistics:\n"
+        stats += f"Total Delivery Points: {total_deliveries}\n"
+        stats += f"Assigned Delivery Points: {assigned_count}\n"
+        stats += f"Unassigned Delivery Points: {unassigned_count}\n"
+        stats += f"Coverage Percentage: {coverage_percent:.1f}%\n\n"
+        
+        stats += f"Fleet Configuration:\n"
+        stats += f"Electric Trucks: {self.electric_trucks}\n"
+        stats += f"Fuel Trucks: {self.fuel_trucks}\n"
+        stats += f"Drones: {self.drones}\n"
+        stats += f"Total Vehicles: {len(self.vehicles)}\n\n"
+        
+        if unassigned_count > 0:
+            stats += f"RECOMMENDATION:\n"
+            stats += f"To achieve 100% coverage, you need at least {total_deliveries} vehicles\n"
+            stats += f"OR reduce customers to {len(self.vehicles)} or fewer.\n"
+        else:
+            stats += f"SUCCESS: Full coverage achieved!"
+        
+        return stats
+
+    def show_coverage_statistics(self):
+        """Display coverage statistics in a message box"""
+        stats = self.get_coverage_statistics()
+        QMessageBox.information(self, "Fleet Coverage Statistics", stats)
+
+    def get_delivery_allocation_summary(self):
+        """Get a summary of which delivery points are assigned to vehicles"""
+        if not self.vehicles:
+            return "No vehicles deployed."
+        
+        # Group vehicles by delivery point
+        delivery_assignments = {}
+        for name, vehicle in self.vehicles.items():
+            delivery_key = tuple(vehicle["assigned_delivery"])
+            if delivery_key not in delivery_assignments:
+                delivery_assignments[delivery_key] = []
+            delivery_assignments[delivery_key].append(name)
+        
+        summary = f"Delivery Point Assignments:\n"
+        summary += f"Total delivery points: {len(self.delivery_points)}\n"
+        summary += f"Assigned delivery points: {len(delivery_assignments)}\n\n"
+        
+        # List assignments
+        for i, (delivery_coords, vehicles) in enumerate(delivery_assignments.items(), 1):
+            lat, lng = delivery_coords
+            vehicle_list = ", ".join(vehicles)
+            summary += f"Point {i}: ({lat:.4f}, {lng:.4f})\n"
+            summary += f"  Vehicles: {vehicle_list}\n\n"
+        
+        # List unassigned delivery points
+        assigned_coords = set(delivery_assignments.keys())
+        unassigned_points = []
+        for i, point in enumerate(self.delivery_points):
+            if tuple(point) not in assigned_coords:
+                unassigned_points.append((i+1, point))
+        
+        if unassigned_points:
+            summary += f"Unassigned Delivery Points ({len(unassigned_points)}):\n"
+            for point_num, (lat, lng) in unassigned_points:
+                summary += f"  Point {point_num}: ({lat:.4f}, {lng:.4f})\n"
+        else:
+            summary += "✓ All delivery points have vehicles assigned!"
+        
+        return summary
+
+    def show_allocation_summary(self):
+        """Display allocation summary in a message box"""
+        summary = self.get_delivery_allocation_summary()
+        QMessageBox.information(self, "Vehicle Allocation Summary", summary)
+        
     def restart_vehicles(self):
         """Restart vehicles from the beginning of their routes"""
         if not self.vehicles_started:
@@ -283,7 +538,6 @@ class IndiaAirspaceMap(QMainWindow):
         
         print("All vehicles restarted from the beginning of their routes!")
         
-        # Show confirmation message
         QMessageBox.information(
             self, 
             "Vehicles Restarted", 
@@ -293,28 +547,6 @@ class IndiaAirspaceMap(QMainWindow):
     def pause_vehicles(self):
         """Pause vehicle movement but keep them visible on map"""
         self.vehicles_paused = True
-        # Note: We don't set vehicles_started = False, so vehicles remain on map
-        
-        # Update button state programmatically if needed
-        if hasattr(self, 'start_stop_action'):
-            self.start_stop_action.setChecked(False)
-            self.start_stop_action.setText("▶ Resume Vehicles")
-        
-        # Update vehicle statuses to "Stopped"
-        for name, v in self.vehicles.items():
-            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Stopped", 0)
-            self.vehicle_control.update_vehicle_status(vehicle_data)
-            
-        print("Vehicle movement paused! Vehicles remain visible at current positions.")
-        return True
-        """Pause vehicle movement but keep them visible on map"""
-        self.vehicles_paused = True
-        # Note: We don't set vehicles_started = False, so vehicles remain on map
-        
-        # Update button state programmatically if needed
-        if hasattr(self, 'start_stop_action'):
-            self.start_stop_action.setChecked(False)
-            self.start_stop_action.setText("▶ Resume Vehicles")
         
         # Update vehicle statuses to "Stopped"
         for name, v in self.vehicles.items():
@@ -325,24 +557,22 @@ class IndiaAirspaceMap(QMainWindow):
         return True
 
     def stop_vehicles(self):
-        """Completely stop and clear all vehicles (this method kept for compatibility)"""
+        """Completely stop and clear all vehicles"""
         self.vehicles_started = False
         self.vehicles_paused = False
         self.wave_running = False
         self.vehicles.clear()
         
         if hasattr(self, 'vehicle_control') and hasattr(self.vehicle_control, 'status_list'):
-            self.vehicle_control.status_list.clear()  # Clear status list
+            self.vehicle_control.status_list.clear()
         
         if self.map_ready:
             self.map_view.page().runJavaScript("clearVehicles();")
         
-        # Update button state programmatically if needed
         if hasattr(self, 'start_stop_action'):
             self.start_stop_action.setChecked(False)
             self.start_stop_action.setText("▶ Start Vehicles")
             
-        # Hide restart button when vehicles are completely stopped
         if hasattr(self, 'restart_action'):
             self.restart_action.setVisible(False)
             
@@ -350,60 +580,72 @@ class IndiaAirspaceMap(QMainWindow):
         return True
 
     def change_depot_location(self):
-        """Open depot selection dialog to change location and customer count"""
+        """Open depot selection dialog to change location, customer count, and fleet configuration"""
         depot_dialog = DepotSelectionWindow()
         depot_dialog.depot_selected.connect(self.on_new_depot_selected)
         depot_dialog.exec()
     
-    def on_new_depot_selected(self, lat, lng, customer_count):
-        """Handle new depot selection with customer count"""
+    def on_new_depot_selected(self, lat, lng, customer_count, electric_trucks, fuel_trucks, drones):
+        """Handle new depot and fleet configuration selection"""
         self.depot_coords = [lat, lng]
         self.customer_count = customer_count
+        self.electric_trucks = electric_trucks
+        self.fuel_trucks = fuel_trucks
+        self.drones = drones
         
-        # Regenerate delivery points around new depot with new customer count
+        # Regenerate delivery points around new depot
         self.delivery_points = self.generate_delivery_points_around_depot()
         
         # Update delivery info widget
         self.delivery_info.update_depot(self.depot_coords, self.customer_count)
         
-        # Stop current vehicles completely when changing depot
+        # Stop current vehicles completely when changing configuration
         self.stop_vehicles()
         
         # Update UI
-        self.update_depot_ui()
+        self.update_depot_and_fleet_ui()
         
         # Reinitialize map if ready
         if self.map_ready:
             self.reinitialize_map()
         
+        total_vehicles = electric_trucks + fuel_trucks + drones
         QMessageBox.information(
             self, 
             "Configuration Updated", 
-            f"Depot and configuration updated:\n\n"
+            f"Depot and fleet configuration updated:\n\n"
             f"🚩 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f" Customer Count: {customer_count}\n\n"
+            f"📦 Customer Count: {customer_count}\n\n"
+            f"🚚 Fleet Configuration:\n"
+            f"   • Electric Trucks: {electric_trucks}\n"
+            f"   • Fuel Trucks: {fuel_trucks}\n"
+            f"   • Drones: {drones}\n"
+            f"   • Total Vehicles: {total_vehicles}\n\n"
             f"{customer_count} delivery points have been generated around your new depot."
         )
     
-    def update_depot_ui(self):
-        """Update UI elements with new depot and customer info"""
+    def update_depot_and_fleet_ui(self):
+        """Update UI elements with new depot and fleet configuration"""
         # Update status bar
-        self.statusBar().showMessage(f"India Airspace Management System Ready - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
+        self.update_status_bar()
         
         # Update toolbar tooltip
-        self.change_depot_action.setToolTip(f"Current depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        self.change_depot_action.setToolTip(
+            f"Current depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | "
+            f"Customers: {self.customer_count} | "
+            f"Fleet: {total_vehicles} vehicles"
+        )
         
         # Update left panel labels
-        for i in range(self.centralWidget().layout().itemAt(0).widget().layout().count()):
-            item = self.centralWidget().layout().itemAt(0).widget().layout().itemAt(i)
-            if item and item.widget():
-                widget = item.widget()
-                if isinstance(widget, QLabel):
-                    text = widget.text()
-                    if text.startswith("Depot:"):
-                        widget.setText(f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f}")
-                    elif text.startswith("Customers:"):
-                        widget.setText(f"Customers: {self.customer_count}")
+        if hasattr(self, 'depot_info_label'):
+            self.depot_info_label.setText(f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f}")
+        if hasattr(self, 'customer_info_label'):
+            self.customer_info_label.setText(f"Customers: {self.customer_count}")
+        if hasattr(self, 'fleet_info_label'):
+            self.fleet_info_label.setText(f"Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D")
+        if hasattr(self, 'fleet_summary_label'):
+            self.fleet_summary_label.setText(f"Total Vehicles: {total_vehicles}")
     
     def reinitialize_map(self):
         """Reinitialize map with new depot location and delivery points"""
@@ -458,7 +700,9 @@ class IndiaAirspaceMap(QMainWindow):
             
         self.map_ready = True
         self.reinitialize_map()
-        print(f"Map initialized successfully with depot at {self.depot_coords} and {self.customer_count} delivery points!")
+        total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+        print(f"Map initialized successfully with depot at {self.depot_coords}")
+        print(f"Configuration: {self.customer_count} customers, {total_vehicles} vehicles")
     
     def toggle_no_fly_zones(self):
         """Toggle no-fly zones visibility"""
@@ -471,93 +715,15 @@ class IndiaAirspaceMap(QMainWindow):
         if self.map_ready:
             show = self.toggle_vehicles_action.isChecked()
             self.map_view.page().runJavaScript(f"window.toggleVehicles({str(show).lower()});")
-    
-        # If showing vehicles and we have vehicles data, resend them
+        
         if show and self.vehicles:
             self.send_vehicles_to_js()
-    
-    def start_wave(self, wave_index):
-        """Start wave of vehicles from custom depot to customer delivery points"""
-        if wave_index >= len(self.waves):
-            return
-            
-        cfg = self.waves[wave_index]
-        self.vehicles.clear()
-        
-        deliveries = self.delivery_points[:]
-        random.shuffle(deliveries)
-        
-        def pick_delivery(i):
-            return deliveries[i % len(deliveries)]
-        
-        offset = 0
-        
-        # Create drones
-        for i in range(cfg.get("num_drones", 0)):
-            name = f"Drone {i+1}"
-            delivery = pick_delivery(i + offset)
-            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=True)
-            self.vehicles[name] = {
-                "type": "Drone",
-                "pos": route[0][:],
-                "route": route,
-                "route_index": 0,
-                "speed": VEHICLE_SPEEDS["Drone"],
-                "progress": 0.0,
-                "weight": random.randint(*VEHICLE_WEIGHTS["Drone"])
-            }
-        
-        offset += cfg.get("num_drones", 0)
-        
-        # Create electric trucks  
-        for i in range(cfg.get("num_electric_trucks", 0)):
-            name = f"Electric Truck {i+1}"
-            delivery = pick_delivery(i + offset)
-            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=False)
-            self.vehicles[name] = {
-                "type": "Electric Truck",
-                "pos": route[0][:],
-                "route": route,
-                "route_index": 0,
-                "speed": VEHICLE_SPEEDS["Electric Truck"],
-                "progress": 0.0,
-                "weight": random.randint(*VEHICLE_WEIGHTS["Electric Truck"])
-            }
-        
-        offset += cfg.get("num_electric_trucks", 0)
-        
-        # Create fuel trucks
-        for i in range(cfg.get("num_fuel_trucks", 0)):
-            name = f"Fuel Truck {i+1}"
-            delivery = pick_delivery(i + offset)
-            route = RouteManager.build_roundtrip_route(self.depot_coords, delivery, use_drone=False)
-            self.vehicles[name] = {
-                "type": "Fuel Truck",
-                "pos": route[0][:],
-                "route": route,
-                "route_index": 0,
-                "speed": VEHICLE_SPEEDS["Fuel Truck"],
-                "progress": 0.0,
-                "weight": random.randint(*VEHICLE_WEIGHTS["Fuel Truck"])
-            }
-        
-        self.wave_running = True
-        self.wave_start_time = time.time()
-        
-        # Send vehicles to JavaScript
-        self.send_vehicles_to_js()
-        
-        # Update left sidebar with vehicle info
-        for name, v in self.vehicles.items():
-            vehicle_data = VehicleData(name, v["type"], v["pos"][0], v["pos"][1], "Moving", v["speed"])
-            self.vehicle_control.update_vehicle_status(vehicle_data)
     
     def send_vehicles_to_js(self):
         """Send vehicle data to JavaScript without reloading map"""
         if not self.map_ready:
             return
         
-        # Only send if vehicles should be visible
         if not self.toggle_vehicles_action.isChecked():
             return
         
@@ -583,7 +749,6 @@ class IndiaAirspaceMap(QMainWindow):
         if not self.map_ready or not self.vehicles:
             return
         
-        # Only update if vehicles should be visible
         if not self.toggle_vehicles_action.isChecked():
             return
         
@@ -593,7 +758,7 @@ class IndiaAirspaceMap(QMainWindow):
                     "name": name,
                     "type": v["type"],
                     "pos": v["pos"],
-                    "speed": v["speed"] if not self.vehicles_paused else 0,  # Show 0 speed when paused
+                    "speed": v["speed"] if not self.vehicles_paused else 0,
                     "weight": v["weight"]
                 }
                 for name, v in self.vehicles.items()
@@ -615,13 +780,6 @@ class IndiaAirspaceMap(QMainWindow):
         if not self.map_ready or not self.vehicles_started or self.vehicles_paused:
             return
             
-        # Check if we need to start next wave
-        if not self.wave_running:
-            if time.time() - self.wave_start_time >= self.pause_between_waves:
-                self.current_wave = (self.current_wave + 1) % len(self.waves)
-                self.start_wave(self.current_wave)
-            return
-        
         if not self.vehicles:
             return
             
@@ -675,16 +833,20 @@ class IndiaAirspaceMap(QMainWindow):
         if vehicles_moved:
             self.update_vehicle_positions_js()
         
-        # Check if wave completed
+        # Check if all vehicles completed
         if self.wave_running and self.all_vehicles_returned():
             self.wave_running = False
-            self.wave_start_time = time.time()
-            print(f"Wave {self.current_wave + 1} completed!")
+            print(f"All vehicles completed their delivery routes!")
             
             # Update status bar
             active_vehicles = len([v for v in self.vehicles.values() if v["route_index"] < len(v["route"]) - 1])
-            status_text = "paused" if self.vehicles_paused else "active"
-            self.statusBar().showMessage(f"Wave {self.current_wave + 1} completed - {active_vehicles} vehicles {status_text} - Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}")
+            status_text = "paused" if self.vehicles_paused else "completed"
+            total_vehicles = self.electric_trucks + self.fuel_trucks + self.drones
+            self.statusBar().showMessage(
+                f"Delivery cycle {status_text} - "
+                f"Fleet: {total_vehicles} vehicles ({self.electric_trucks}E, {self.fuel_trucks}F, {self.drones}D) - "
+                f"Depot: {self.depot_coords[0]:.4f}, {self.depot_coords[1]:.4f} | Customers: {self.customer_count}"
+            )
     
     def closeEvent(self, event):
         """Clean up on close"""

@@ -1,8 +1,8 @@
 """
-HTML templates for map interfaces
+HTML templates for map interfaces - FIXED VERSION
 """
 
-# Main application map template
+# Main application map template with fixed legend
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,23 +21,59 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     border-radius: 12px;
     overflow: hidden;
   }
-  .legend {
-    position: absolute; bottom: 12px; left: 12px;
-    background: rgba(255,255,255,0.9); padding: 8px 10px; border-radius: 8px;
-    font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  
+  /* FIXED LEGEND STYLES */
+  .legend-container {
+    position: fixed !important;
+    bottom: 12px !important;
+    left: 12px !important;
+    background: rgba(40, 40, 40, 0.95) !important;
+    border: 2px solid #ff6b35 !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    font-family: 'Arial', sans-serif !important;
+    font-size: 12px !important;
+    color: white !important;
+    z-index: 9999 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    max-width: 200px !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    backdrop-filter: blur(10px) !important;
   }
-  .legend .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+
+  .legend-container h4 {
+    margin: 0 0 8px 0 !important;
+    color: #ff6b35 !important;
+    font-size: 14px !important;
+    font-weight: bold !important;
+  }
+
+  .legend-item {
+    display: flex !important;
+    align-items: center !important;
+    margin: 4px 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .legend-dot {
+    width: 12px !important;
+    height: 12px !important;
+    border-radius: 50% !important;
+    margin-right: 8px !important;
+    border: 1px solid rgba(255,255,255,0.3) !important;
+    flex-shrink: 0 !important;
+  }
+
+  .legend-dot.drone { background-color: #3b82f6 !important; }
+  .legend-dot.electric { background-color: #22c55e !important; }
+  .legend-dot.fuel { background-color: #ef4444 !important; }
+  .legend-dot.depot { background-color: #f59e0b !important; }
+  .legend-dot.delivery { background-color: #8b5cf6 !important; }
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div class="legend">
-  <div><span class="dot" style="background:#3b82f6"></span> Drones (route dotted)</div>
-  <div><span class="dot" style="background:#22c55e"></span> Electric Truck</div>
-  <div><span class="dot" style="background:#ef4444"></span> Fuel Truck</div>
-  <div><span class="dot" style="background:#f59e0b"></span> Selected Depot</div>
-  <div><span class="dot" style="background:#8b5cf6"></span> Delivery Points</div>
-</div>
 
 <script>
   let map;
@@ -49,6 +85,58 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   let showVehicles = true;
   let showNFZ = true;
   let nfzLayers = [];
+  let legendContainer = null;
+
+  function createPersistentLegend() {
+    // Remove any existing legend
+    if (legendContainer) {
+      try {
+        document.body.removeChild(legendContainer);
+      } catch(e) {}
+    }
+
+    // Create new legend container
+    legendContainer = document.createElement('div');
+    legendContainer.className = 'legend-container';
+    
+    legendContainer.innerHTML = `
+      <h4>Map Legend</h4>
+      <div class="legend-item">
+        <div class="legend-dot drone"></div>
+        <span>Drones (route dotted)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot electric"></div>
+        <span>Electric Truck</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot fuel"></div>
+        <span>Fuel Truck</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot depot"></div>
+        <span>Selected Depot</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-dot delivery"></div>
+        <span>Delivery Points</span>
+      </div>
+    `;
+    
+    // Append to document body
+    document.body.appendChild(legendContainer);
+    
+    return legendContainer;
+  }
+
+  function ensureLegendVisibility() {
+    if (legendContainer) {
+      legendContainer.style.zIndex = '9999';
+      legendContainer.style.visibility = 'visible';
+      legendContainer.style.display = 'block';
+      legendContainer.style.position = 'fixed';
+    }
+  }
 
   function initializeMap(mapData) {
     map = L.map('map').setView([mapData.center[0], mapData.center[1]], mapData.zoom);
@@ -57,6 +145,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       maxZoom: 19, 
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
+
+    // Create persistent legend after map initialization
+    setTimeout(() => {
+      createPersistentLegend();
+    }, 500);
+
+    // Ensure legend stays visible during zoom/move events
+    map.on('zoom', ensureLegendVisibility);
+    map.on('move', ensureLegendVisibility);
+    map.on('zoomend', ensureLegendVisibility);
+    map.on('moveend', ensureLegendVisibility);
 
     // Add depot marker
     if (mapData.depot) {
@@ -164,10 +263,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       iconColor = '#3b82f6'; // blue
     } else if (type === 'Electric Truck') {
       iconHtml = '<i class="fa fa-truck"></i>';
-      iconColor = '#ef4444'; // red
+      iconColor = '#22c55e'; // green - FIXED: was red, now matches legend
     } else if (type === 'Fuel Truck') {
       iconHtml = '<i class="fa fa-truck"></i>';
-      iconColor = '#22c55e'; // green
+      iconColor = '#ef4444'; // red - FIXED: was green, now matches legend
     }
     
     return L.divIcon({
@@ -210,6 +309,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       }
       trailLines[v.name] = trail.addTo(map);
     });
+
+    // Ensure legend stays visible after adding vehicles
+    setTimeout(ensureLegendVisibility, 100);
   }
 
   function updateVehiclePositions(vehicleData) {
@@ -238,6 +340,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
       }
     });
+
+    // Ensure legend stays visible during updates
+    ensureLegendVisibility();
   }
 
   function clearVehicles(){
@@ -260,6 +365,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!show) {
       clearVehicles();
     }
+    // Ensure legend stays visible
+    setTimeout(ensureLegendVisibility, 100);
   }
 
   function toggleNoFlyZones(show) {
@@ -271,6 +378,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         map.removeLayer(layer);
       }
     });
+    // Ensure legend stays visible
+    setTimeout(ensureLegendVisibility, 100);
+  }
+
+  // Periodic visibility check to ensure legend never disappears
+  setInterval(ensureLegendVisibility, 2000);
+
+  // Override Leaflet control positioning to maintain legend visibility
+  if (window.L && L.Control) {
+    const originalOnAdd = L.Control.prototype.onAdd;
+    L.Control.prototype.onAdd = function(map) {
+      const result = originalOnAdd.call(this, map);
+      setTimeout(ensureLegendVisibility, 100);
+      return result;
+    };
   }
 
   // Expose functions to Python
@@ -284,7 +406,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
-# Depot selection map template
+# Keep the depot selection template unchanged
 DEPOT_SELECTION_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -345,16 +467,17 @@ DEPOT_SELECTION_HTML = """<!DOCTYPE html>
     margin: 10px 0;
   }
   .legend {
-    position: absolute; 
-    bottom: 20px; 
-    left: 20px;
-    background: rgba(45, 45, 45, 0.95);
-    color: white;
-    padding: 15px;
-    border-radius: 8px;
-    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    backdrop-filter: blur(10px);
-    border: 1px solid #404040;
+    position: fixed !important; 
+    bottom: 20px !important; 
+    left: 20px !important;
+    background: rgba(45, 45, 45, 0.95) !important;
+    color: white !important;
+    padding: 15px !important;
+    border-radius: 8px !important;
+    font: 12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid #404040 !important;
+    z-index: 9999 !important;
   }
   .legend .dot { 
     display: inline-block; 
@@ -411,16 +534,9 @@ DEPOT_SELECTION_HTML = """<!DOCTYPE html>
   function initializeDepotMap(mapData) {
     map = L.map('map').setView([mapData.center[0], mapData.center[1]], mapData.zoom);
     
-    // Use satellite view for better location selection
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 18,
-      attribution: '&copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    }).addTo(map);
-
-    // Add city labels overlay
+    // Use same OpenStreetMap tiles as main window
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      opacity: 0.3,
+      maxZoom: 19, 
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
