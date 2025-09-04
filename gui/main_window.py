@@ -1,5 +1,6 @@
 """
 Main application window for India Airspace Management System - ENHANCED with fleet configuration
+FIXED: Depot location update issue resolved
 """
 import sys
 import os
@@ -421,93 +422,6 @@ class IndiaAirspaceMap(QMainWindow):
         
         print(f"================================\n")
 
-    def get_coverage_statistics(self):
-        """Get detailed coverage statistics"""
-        if not self.vehicles:
-            return "No vehicles deployed."
-        
-        # Count unique delivery assignments
-        assigned_deliveries = set()
-        for vehicle in self.vehicles.values():
-            if "assigned_delivery" in vehicle:
-                assigned_deliveries.add(tuple(vehicle["assigned_delivery"]))
-        
-        total_deliveries = len(self.delivery_points)
-        assigned_count = len(assigned_deliveries)
-        unassigned_count = total_deliveries - assigned_count
-        coverage_percent = (assigned_count / total_deliveries * 100) if total_deliveries > 0 else 0
-        
-        stats = f"Coverage Statistics:\n"
-        stats += f"Total Delivery Points: {total_deliveries}\n"
-        stats += f"Assigned Delivery Points: {assigned_count}\n"
-        stats += f"Unassigned Delivery Points: {unassigned_count}\n"
-        stats += f"Coverage Percentage: {coverage_percent:.1f}%\n\n"
-        
-        stats += f"Fleet Configuration:\n"
-        stats += f"Electric Trucks: {self.electric_trucks}\n"
-        stats += f"Fuel Trucks: {self.fuel_trucks}\n"
-        stats += f"Drones: {self.drones}\n"
-        stats += f"Total Vehicles: {len(self.vehicles)}\n\n"
-        
-        if unassigned_count > 0:
-            stats += f"RECOMMENDATION:\n"
-            stats += f"To achieve 100% coverage, you need at least {total_deliveries} vehicles\n"
-            stats += f"OR reduce customers to {len(self.vehicles)} or fewer.\n"
-        else:
-            stats += f"SUCCESS: Full coverage achieved!"
-        
-        return stats
-
-    def show_coverage_statistics(self):
-        """Display coverage statistics in a message box"""
-        stats = self.get_coverage_statistics()
-        QMessageBox.information(self, "Fleet Coverage Statistics", stats)
-
-    def get_delivery_allocation_summary(self):
-        """Get a summary of which delivery points are assigned to vehicles"""
-        if not self.vehicles:
-            return "No vehicles deployed."
-        
-        # Group vehicles by delivery point
-        delivery_assignments = {}
-        for name, vehicle in self.vehicles.items():
-            delivery_key = tuple(vehicle["assigned_delivery"])
-            if delivery_key not in delivery_assignments:
-                delivery_assignments[delivery_key] = []
-            delivery_assignments[delivery_key].append(name)
-        
-        summary = f"Delivery Point Assignments:\n"
-        summary += f"Total delivery points: {len(self.delivery_points)}\n"
-        summary += f"Assigned delivery points: {len(delivery_assignments)}\n\n"
-        
-        # List assignments
-        for i, (delivery_coords, vehicles) in enumerate(delivery_assignments.items(), 1):
-            lat, lng = delivery_coords
-            vehicle_list = ", ".join(vehicles)
-            summary += f"Point {i}: ({lat:.4f}, {lng:.4f})\n"
-            summary += f"  Vehicles: {vehicle_list}\n\n"
-        
-        # List unassigned delivery points
-        assigned_coords = set(delivery_assignments.keys())
-        unassigned_points = []
-        for i, point in enumerate(self.delivery_points):
-            if tuple(point) not in assigned_coords:
-                unassigned_points.append((i+1, point))
-        
-        if unassigned_points:
-            summary += f"Unassigned Delivery Points ({len(unassigned_points)}):\n"
-            for point_num, (lat, lng) in unassigned_points:
-                summary += f"  Point {point_num}: ({lat:.4f}, {lng:.4f})\n"
-        else:
-            summary += "✓ All delivery points have vehicles assigned!"
-        
-        return summary
-
-    def show_allocation_summary(self):
-        """Display allocation summary in a message box"""
-        summary = self.get_delivery_allocation_summary()
-        QMessageBox.information(self, "Vehicle Allocation Summary", summary)
-        
     def restart_vehicles(self):
         """Restart vehicles from the beginning of their routes"""
         if not self.vehicles_started:
@@ -587,6 +501,10 @@ class IndiaAirspaceMap(QMainWindow):
     
     def on_new_depot_selected(self, lat, lng, customer_count, electric_trucks, fuel_trucks, drones):
         """Handle new depot and fleet configuration selection"""
+        # Store old coordinates for comparison
+        old_depot = self.depot_coords[:]
+        
+        # Update configuration
         self.depot_coords = [lat, lng]
         self.customer_count = customer_count
         self.electric_trucks = electric_trucks
@@ -605,9 +523,10 @@ class IndiaAirspaceMap(QMainWindow):
         # Update UI
         self.update_depot_and_fleet_ui()
         
-        # Reinitialize map if ready
+        # FIXED: Force map reinitialization with new depot
         if self.map_ready:
-            self.reinitialize_map()
+            print(f"Updating depot from {old_depot} to {self.depot_coords}")
+            self.force_map_update()
         
         total_vehicles = electric_trucks + fuel_trucks + drones
         QMessageBox.information(
@@ -647,16 +566,42 @@ class IndiaAirspaceMap(QMainWindow):
         if hasattr(self, 'fleet_summary_label'):
             self.fleet_summary_label.setText(f"Total Vehicles: {total_vehicles}")
     
-    def reinitialize_map(self):
-        """Reinitialize map with new depot location and delivery points"""
+    def force_map_update(self):
+        """FIXED: Force a complete map reload with new depot location"""
         if not self.map_ready:
             return
         
-        # Initialize map with new data
+        print(f"Force updating map with new depot: {self.depot_coords}")
+        
+        # Method 1: Try to completely reload the map HTML file
+        self.map_ready = False
+        self.create_new_map_file()
+        self.map_view.setUrl(QUrl.fromLocalFile(self.map_path))
+    
+    def create_new_map_file(self):
+        """Create a new HTML map file to force complete reload"""
+        # Create unique filename to force reload
+        timestamp = str(int(time.time() * 1000))
+        self.map_path = os.path.abspath(f"india_airspace_map_{timestamp}.html")
+        
+        # Write HTML template to new file
+        with open(self.map_path, "w", encoding="utf-8") as f:
+            f.write(HTML_TEMPLATE)
+        
+        print(f"Created new map file: {self.map_path}")
+    
+    def reinitialize_map(self):
+        """FIXED: Reinitialize map with new depot location and delivery points"""
+        if not self.map_ready:
+            return
+        
+        print(f"Reinitializing map with depot: {self.depot_coords}")
+        
+        # Prepare complete map data including new depot
         map_data = {
             "center": self.map_center,
             "zoom": self.map_zoom,
-            "depot": self.depot_coords,
+            "depot": self.depot_coords,  # FIXED: Explicitly include depot coordinates
             "deliveries": self.delivery_points,
             "cities": [
                 {'name': 'New Delhi', 'coords': [28.6139, 77.2090]},
@@ -671,8 +616,78 @@ class IndiaAirspaceMap(QMainWindow):
             "nfzones": self.no_fly_zones
         }
         
-        js_code = f"window.initializeMap({json.dumps(map_data)});"
+        # Try multiple approaches to ensure depot updates
+        js_code = f"""
+        console.log('Attempting to update depot to: {json.dumps(self.depot_coords)}');
+        
+        // Method 1: Direct depot update if function exists
+        if (typeof window.updateDepotLocation === 'function') {{
+            console.log('Using updateDepotLocation function');
+            window.updateDepotLocation({json.dumps(self.depot_coords)}, {json.dumps(self.delivery_points)});
+        }}
+        // Method 2: Full map reinitialization
+        else if (typeof window.initializeMap === 'function') {{
+            console.log('Using initializeMap function');
+            window.initializeMap({json.dumps(map_data)});
+        }}
+        // Method 3: Manual depot marker update
+        else if (typeof map !== 'undefined') {{
+            console.log('Manual depot marker update');
+            
+            // Remove existing depot marker if it exists
+            if (typeof depotMarker !== 'undefined' && depotMarker) {{
+                map.removeLayer(depotMarker);
+            }}
+            
+            // Create new depot marker
+            var newDepotCoords = {json.dumps(self.depot_coords)};
+            var newDeliveries = {json.dumps(self.delivery_points)};
+            
+            // Add new depot marker
+            depotMarker = L.marker(newDepotCoords, {{
+                icon: L.divIcon({{
+                    className: 'depot-marker',
+                    html: '<div style="background: #ff6b35; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white;">🏢</div>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                }})
+            }}).addTo(map);
+            
+            depotMarker.bindPopup('<b>Depot</b><br/>Coordinates: ' + newDepotCoords[0].toFixed(4) + ', ' + newDepotCoords[1].toFixed(4));
+            
+            // Remove existing delivery markers
+            if (typeof deliveryMarkers !== 'undefined' && deliveryMarkers) {{
+                deliveryMarkers.forEach(function(marker) {{ map.removeLayer(marker); }});
+            }}
+            
+            // Add new delivery markers
+            deliveryMarkers = [];
+            newDeliveries.forEach(function(coords, index) {{
+                var marker = L.marker(coords, {{
+                    icon: L.divIcon({{
+                        className: 'delivery-marker',
+                        html: '<div style="background: #8b5cf6; color: white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; border: 1px solid white;">' + (index + 1) + '</div>',
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    }})
+                }}).addTo(map);
+                
+                marker.bindPopup('<b>Delivery Point ' + (index + 1) + '</b><br/>Coordinates: ' + coords[0].toFixed(4) + ', ' + coords[1].toFixed(4));
+                deliveryMarkers.push(marker);
+            }});
+            
+            // Center map on new depot
+            map.setView(newDepotCoords, 8);
+            
+            console.log('Manual depot update completed');
+        }}
+        else {{
+            console.error('No method available to update depot location');
+        }}
+        """
+        
         self.map_view.page().runJavaScript(js_code)
+        print(f"Map reinitialization attempted for depot at {self.depot_coords}")
     
     def setup_data_simulator(self):
         """Setup data simulation thread for sidebars"""
