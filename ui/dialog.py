@@ -90,7 +90,7 @@ class DepotSelectionWindow(QDialog):
         self.customer_spinbox = QSpinBox()
         self.customer_spinbox.setRange(1, 999)
         self.customer_spinbox.setValue(5)
-        self.customer_spinbox.setSuffix(" customers")
+        # self.customer_spinbox.setSuffix(" customers")
         self.customer_spinbox.setStyleSheet("font-size: 14px; padding: 8px;")
         self.customer_spinbox.valueChanged.connect(self.on_customer_count_changed)
         
@@ -121,9 +121,9 @@ class DepotSelectionWindow(QDialog):
         electric_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #4CAF50;")  # Green for electric
         
         self.electric_spinbox = QSpinBox()
-        self.electric_spinbox.setRange(0, 50)
+        self.electric_spinbox.setRange(0, 999)
         self.electric_spinbox.setValue(2)
-        self.electric_spinbox.setSuffix(" trucks")
+        # self.electric_spinbox.setSuffix(" trucks")
         self.electric_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #4CAF50;")
         self.electric_spinbox.valueChanged.connect(self.on_fleet_changed)
         
@@ -132,9 +132,9 @@ class DepotSelectionWindow(QDialog):
         fuel_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #FF9800;")  # Orange for fuel
         
         self.fuel_spinbox = QSpinBox()
-        self.fuel_spinbox.setRange(0, 50)
+        self.fuel_spinbox.setRange(0, 999)
         self.fuel_spinbox.setValue(1)
-        self.fuel_spinbox.setSuffix(" trucks")
+        # self.fuel_spinbox.setSuffix(" trucks")
         self.fuel_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #FF9800;")
         self.fuel_spinbox.valueChanged.connect(self.on_fleet_changed)
         
@@ -143,9 +143,9 @@ class DepotSelectionWindow(QDialog):
         drone_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2196F3;")  # Blue for drones
         
         self.drone_spinbox = QSpinBox()
-        self.drone_spinbox.setRange(0, 100)
+        self.drone_spinbox.setRange(0, 999)
         self.drone_spinbox.setValue(3)
-        self.drone_spinbox.setSuffix(" drones")
+        # self.drone_spinbox.setSuffix(" drones")
         self.drone_spinbox.setStyleSheet("font-size: 14px; padding: 8px; color: #2196F3;")
         self.drone_spinbox.valueChanged.connect(self.on_fleet_changed)
         
@@ -232,8 +232,7 @@ class DepotSelectionWindow(QDialog):
         subtitle_label.setStyleSheet("font-size: 16px; color: #cccccc; margin-top: 5px;")
         
         header_layout.addWidget(title_label)
-        header_layout.addWidget(subtitle_label)
-        
+       
         # Map container
         map_container = QFrame()
         map_container.setStyleSheet("QFrame { border: 2px solid #404040; border-radius: 8px; }")
@@ -300,9 +299,9 @@ class DepotSelectionWindow(QDialog):
         summary_text = f"""
 <b>Fleet Summary:</b><br/>
 Total Vehicles: {total_vehicles}<br/>
-• 🔋 Electric Trucks: {self.electric_trucks}<br/>
-• ⛽ Fuel Trucks: {self.fuel_trucks}<br/>
-• 🚁 Drones: {self.drones}<br/>
+•  Electric Trucks: {self.electric_trucks}<br/>
+•  Fuel Trucks: {self.fuel_trucks}<br/>
+•  Drones: {self.drones}<br/>
 <br/>
 <b>Capacity Estimate:</b><br/>
 Daily Deliveries: ~{total_vehicles * 8} packages<br/>
@@ -505,25 +504,64 @@ Fleet: {self.electric_trucks}E + {self.fuel_trucks}F + {self.drones}D"""
             QMessageBox.warning(self, "Warning", "Please configure at least one vehicle in your fleet!")
             return
         
-        # Confirm with user
-        reply = QMessageBox.question(
-            self, 
-            "Confirm Depot & Fleet Configuration",
+        # Create custom message box without icon and with grey header
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("Confirm Depot & Fleet Configuration")
+        
+        # Set the message box text
+        msg_box.setText(
             f"Confirm your configuration:\n\n"
             f"🚩 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f"📦 Customers: {self.customer_count}\n\n"
-            f"🚚 Fleet Configuration:\n"
+            f" Customers: {self.customer_count}\n\n"
+            f" Fleet Configuration:\n"
             f"   • Electric Trucks: {self.electric_trucks}\n"
             f"   • Fuel Trucks: {self.fuel_trucks}\n"
             f"   • Drones: {self.drones}\n"
             f"   • Total Vehicles: {total_vehicles}\n\n"
             f"This will generate {self.customer_count} delivery points around your depot.\n\n"
-            f"Proceed to main application?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes
+            f"Proceed to main application?"
         )
         
-        if reply == QMessageBox.Yes:
+        # Remove the icon by setting it to NoIcon
+        msg_box.setIcon(QMessageBox.NoIcon)
+        
+        # Add buttons
+        msg_box.addButton("Yes", QMessageBox.YesRole)
+        msg_box.addButton("No", QMessageBox.NoRole)
+        
+        # Style the message box with grey/black header
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #2d2d2d;
+                color: #ffffff;
+            }
+            QMessageBox QLabel {
+                color: #ffffff;
+                font-size: 13px;
+                padding: 10px;
+            }
+            QPushButton {
+                background-color: #404040;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                padding: 8px 20px;
+                font-size: 12px;
+                min-width: 60px;
+            }
+            QPushButton:hover {
+                background-color: #505050;
+                border-color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #353535;
+            }
+        """)
+        
+        # Show the message box and get the result
+        reply = msg_box.exec_()
+        
+        if reply == 0:  # Yes button (first button added)
             # Emit signal with all configuration parameters
             self.depot_selected.emit(
                 lat, lng, 

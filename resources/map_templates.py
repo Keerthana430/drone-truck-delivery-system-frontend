@@ -143,7 +143,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, 
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: '&copy; OpenStreetMap contributors',
+      noWrap: true
     }).addTo(map);
 
     // Create persistent legend after map initialization
@@ -496,25 +497,7 @@ DEPOT_SELECTION_HTML = """<!DOCTYPE html>
 <body>
 <div id="map"></div>
 
-<div class="info-panel">
-  <h3><i class="fa fa-map-marker-alt"></i> Select Depot Location</h3>
-  <p><strong>Instructions:</strong></p>
-  <p>• Click anywhere on the map to set your depot location</p>
-  <p>• Avoid placing depot inside No-Fly Zones (red areas)</p>
-  <p>• Consider proximity to delivery areas</p>
-  <p>• Click "Confirm Location" when ready</p>
-  
-  <div class="customer-info">
-    <strong>📦 Delivery Points:</strong><br>
-    <span id="customerCount">0</span> delivery points will be generated around your depot
-  </div>
-  
-  <div id="selectedLocation" class="selected-location" style="display: none;">
-    <strong>Selected Depot:</strong><br>
-    <span id="locationText">No location selected</span><br>
-    <small id="coordsText"></small>
-  </div>
-</div>
+
 
 <div class="legend">
   <h4>Map Legend</h4>
@@ -537,7 +520,8 @@ DEPOT_SELECTION_HTML = """<!DOCTYPE html>
     // Use same OpenStreetMap tiles as main window
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, 
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: '&copy; OpenStreetMap contributors',
+      noWrap: true
     }).addTo(map);
 
     // Add major cities
