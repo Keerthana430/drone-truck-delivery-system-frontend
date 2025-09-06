@@ -55,7 +55,7 @@ class DeliveryInfoWidget(QWidget):
         summary_layout.addWidget(QLabel("Total Distance:"), 2, 0)
         summary_layout.addWidget(self.total_distance, 2, 1)
         
-        layout.addWidget(depot_group)
+        
         layout.addWidget(info_group)
         layout.addWidget(summary_group)
     

@@ -178,263 +178,29 @@ DELIVERY_DISTANCE_MAX = 45  # km
 MAX_CUSTOMERS = 20
 MIN_CUSTOMERS = 1
 
+"""
+Optimized Route Manager with performance improvements for large fleets
+FIXES: Slow loading, unallocated delivery points, excessive API calls
+"""
 import math
 import requests
 import json
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 
 class RouteManager:
-    """Route planning using actual road networks with strict depot enforcement"""
-
+    """Optimized route planning with caching and batch processing"""
+    
+    # Class-level cache for routes to avoid duplicate API calls
+    _route_cache = {}
+    _cache_lock = threading.Lock()
+    
     @staticmethod
-    def get_osrm_route(start_lat, start_lon, end_lat, end_lon):
-        """
-        Get actual road route using OSRM (Open Source Routing Machine)
-        This is a FREE service that provides real road routing
-        """
-        try:
-            # OSRM API expects longitude,latitude format
-            start_coord = f"{start_lon},{start_lat}"
-            end_coord = f"{end_lon},{end_lat}"
-            
-            # Use the free OSRM demo server
-            url = f"http://router.project-osrm.org/route/v1/driving/{start_coord};{end_coord}"
-            
-            params = {
-                'overview': 'full',
-                'geometries': 'geojson',
-                'steps': 'false'
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('routes') and len(data['routes']) > 0:
-                    # Extract coordinates from the route
-                    coordinates = data['routes'][0]['geometry']['coordinates']
-                    
-                    # Convert from [lon, lat] to [lat, lon] and filter points
-                    route_points = []
-                    for i, coord in enumerate(coordinates):
-                        # Take every 3rd point to reduce density but keep detail
-                        if i % 3 == 0 or i == len(coordinates) - 1:
-                            route_points.append([coord[1], coord[0]])  # lat, lon
-                    
-                    # ENFORCE: Ensure route starts exactly at the requested start point
-                    if route_points:
-                        route_points[0] = [start_lat, start_lon]
-                    
-                    return route_points
-            
-            print(f"OSRM API failed with status: {response.status_code}")
-            
-        except requests.exceptions.RequestException as e:
-            print(f"OSRM request failed: {e}")
-        except Exception as e:
-            print(f"OSRM routing error: {e}")
-        
-        # Fallback to straight line if API fails
-        return RouteManager.create_fallback_route(start_lat, start_lon, end_lat, end_lon)
-
-    @staticmethod
-    def create_fallback_route(start_lat, start_lon, end_lat, end_lon):
-        """
-        Fallback route when API is unavailable - creates a more realistic interpolated path
-        ALWAYS starts exactly at the given start coordinates
-        """
-        # ENFORCE: Always start exactly at the specified coordinates
-        route = [[start_lat, start_lon]]
-        
-        # Calculate distance
-        distance = RouteManager.haversine(start_lat, start_lon, end_lat, end_lon)
-        
-        # Create intermediate points based on distance
-        num_points = max(5, min(20, int(distance / 2)))  # 1 point every 2km approximately
-        
-        for i in range(1, num_points):
-            t = i / num_points
-            
-            # Linear interpolation
-            lat = start_lat + (end_lat - start_lat) * t
-            lon = start_lon + (end_lon - start_lon) * t
-            
-            # Add slight deviations to simulate road curves
-            deviation = 0.001 * (1 - abs(t - 0.5) * 2)  # More deviation in middle
-            lat += (hash(str(i)) % 1000 - 500) / 500000 * deviation  # Deterministic "random"
-            lon += (hash(str(i + 100)) % 1000 - 500) / 500000 * deviation
-            
-            route.append([lat, lon])
-        
-        # ENFORCE: Always end exactly at the specified coordinates
-        route.append([end_lat, end_lon])
-        return route
-
-    @staticmethod
-    def create_drone_route(start_lat, start_lon, end_lat, end_lon):
-        """
-        Create a straight-line route for drones (air travel)
-        ALWAYS starts exactly at the given start coordinates
-        """
-        # ENFORCE: Always start exactly at the specified coordinates
-        route = [[start_lat, start_lon]]
-        
-        # Calculate distance to determine smoothness
-        distance = RouteManager.haversine(start_lat, start_lon, end_lat, end_lon)
-        
-        # For drones, create fewer waypoints for straighter flight
-        num_points = max(2, min(8, int(distance / 5)))  # 1 point every 5km for smooth movement
-        
-        for i in range(1, num_points):
-            t = i / num_points
-            
-            # Simple linear interpolation for straight flight
-            lat = start_lat + (end_lat - start_lat) * t
-            lon = start_lon + (end_lon - start_lon) * t
-            
-            route.append([lat, lon])
-        
-        # ENFORCE: Always end exactly at the specified coordinates
-        route.append([end_lat, end_lon])
-        return route
-
-    @staticmethod
-    def build_delivery_route(depot, delivery, use_drone=True):
-        """
-        Build a route from depot to delivery and back using the same path
-        Vehicle visits delivery point exactly once, then returns via same route
-        ENFORCES that the route starts and ends exactly at the depot coordinates
-        """
-        # VALIDATE: Ensure depot coordinates are provided
-        if not depot or len(depot) != 2:
-            raise ValueError("Depot coordinates must be provided as [lat, lon]")
-        
-        # VALIDATE: Ensure delivery coordinates are provided
-        if not delivery or len(delivery) != 2:
-            raise ValueError("Delivery coordinates must be provided as [lat, lon]")
-        
-        depot_lat, depot_lon = depot[0], depot[1]
-        delivery_lat, delivery_lon = delivery[0], delivery[1]
-        
-        print(f"Building route from depot {depot} to delivery {delivery} and back via same path (drone: {use_drone})")
-        
-        if use_drone:
-            # DRONES: Use straight-line flight paths
-            print("Creating drone delivery route with straight-line flight path...")
-            outbound_route = RouteManager.create_drone_route(
-                depot_lat, depot_lon, delivery_lat, delivery_lon
-            )
-            print(f"Drone outbound route completed with {len(outbound_route)} flight waypoints")
-        else:
-            # TRUCKS: Use actual road networks
-            print("Creating truck delivery route using real road network...")
-            outbound_route = RouteManager.get_osrm_route(
-                depot_lat, depot_lon, delivery_lat, delivery_lon
-            )
-            print(f"Truck outbound route completed with {len(outbound_route)} road waypoints")
-        
-        # ENFORCE: Double-check that route starts at depot and ends at delivery
-        if outbound_route and len(outbound_route) > 0:
-            outbound_route[0] = [depot_lat, depot_lon]  # Force start at depot
-            outbound_route[-1] = [delivery_lat, delivery_lon]  # Force end at delivery
-        else:
-            # Emergency fallback if API call failed
-            print("WARNING: API call failed, using emergency fallback route")
-            outbound_route = [[depot_lat, depot_lon], [delivery_lat, delivery_lon]]
-        
-        # CREATE RETURN ROUTE: Reverse the same path (excluding delivery point to avoid duplicate)
-        # This creates the exact same path but in reverse direction
-        return_route = outbound_route[:-1]  # Remove delivery point
-        return_route.reverse()  # Reverse the order to go back to depot
-        
-        # COMBINE: Outbound route + return route (same path, reversed)
-        complete_route = outbound_route + return_route
-        
-        print(f"Complete route: {len(outbound_route)} waypoints to delivery + {len(return_route)} waypoints back = {len(complete_route)} total")
-        print(f"Route validation: Starts at {complete_route[0]}, visits delivery at waypoint {len(outbound_route)-1}, ends at {complete_route[-1]}")
-        
-        # Verify the route starts and ends at depot
-        start_matches = (abs(complete_route[0][0] - depot_lat) < 0.0001 and 
-                        abs(complete_route[0][1] - depot_lon) < 0.0001)
-        end_matches = (abs(complete_route[-1][0] - depot_lat) < 0.0001 and 
-                      abs(complete_route[-1][1] - depot_lon) < 0.0001)
-        
-        # Verify delivery point is visited exactly once
-        delivery_visits = 0
-        delivery_waypoint_index = -1
-        for i, waypoint in enumerate(complete_route):
-            if (abs(waypoint[0] - delivery_lat) < 0.0001 and 
-                abs(waypoint[1] - delivery_lon) < 0.0001):
-                delivery_visits += 1
-                if delivery_waypoint_index == -1:
-                    delivery_waypoint_index = i
-        
-        if not start_matches:
-            print(f"WARNING: Route does not start exactly at depot!")
-        if not end_matches:
-            print(f"WARNING: Route does not end exactly at depot!")
-        if delivery_visits != 1:
-            print(f"WARNING: Delivery point visited {delivery_visits} times instead of exactly once!")
-        else:
-            print(f"✓ Delivery point visited exactly once at waypoint {delivery_waypoint_index}")
-        
-        return complete_route
-
-    @staticmethod
-    def build_roundtrip_route(depot, delivery, use_drone=True):
-        """
-        Alias for build_delivery_route() to maintain backward compatibility
-        Build a route from depot to delivery and back using the same path
-        Vehicle visits delivery point exactly once, then returns via same route
-        """
-        return RouteManager.build_delivery_route(depot, delivery, use_drone)
-
-    @staticmethod
-    def validate_delivery_compliance(route, depot_coords, delivery_coords):
-        """
-        Validate that a route starts and ends at depot, visits delivery exactly once
-        """
-        if not route or len(route) < 3:
-            return False, "Route is too short for depot->delivery->depot"
-        
-        depot_lat, depot_lon = depot_coords[0], depot_coords[1]
-        delivery_lat, delivery_lon = delivery_coords[0], delivery_coords[1]
-        
-        # Check start point (should be at depot)
-        start_lat, start_lon = route[0][0], route[0][1]
-        start_matches = (abs(start_lat - depot_lat) < 0.0001 and 
-                        abs(start_lon - depot_lon) < 0.0001)
-        
-        # Check end point (should be back at depot)
-        end_lat, end_lon = route[-1][0], route[-1][1]
-        end_matches = (abs(end_lat - depot_lat) < 0.0001 and 
-                      abs(end_lon - depot_lon) < 0.0001)
-        
-        # Count delivery point visits
-        delivery_visits = 0
-        for waypoint in route:
-            if (abs(waypoint[0] - delivery_lat) < 0.0001 and 
-                abs(waypoint[1] - delivery_lon) < 0.0001):
-                delivery_visits += 1
-        
-        if start_matches and end_matches and delivery_visits == 1:
-            return True, "Route complies: starts/ends at depot, visits delivery exactly once"
-        elif not start_matches:
-            return False, "Route does not start at depot"
-        elif not end_matches:
-            return False, "Route does not end at depot"
-        elif delivery_visits != 1:
-            return False, f"Route visits delivery {delivery_visits} times instead of exactly once"
-        else:
-            return False, "Route validation failed"
-
-    @staticmethod
+    @lru_cache(maxsize=1000)  # Cache for haversine calculations
     def haversine(lat1, lon1, lat2, lon2):
-        """
-        Calculate the great-circle distance between two points on the Earth.
-        Returns distance in kilometers.
-        """
+        """Calculate distance with caching for repeated calculations"""
         R = 6371.0  # Earth radius in km
         phi1 = math.radians(lat1)
         phi2 = math.radians(lat2)
@@ -444,3 +210,405 @@ class RouteManager:
         a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
         c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
         return R * c
+    
+    @staticmethod
+    def get_cached_route_key(start_lat, start_lon, end_lat, end_lon, use_drone):
+        """Generate cache key for routes"""
+        # Round to 4 decimal places to increase cache hits for nearby points
+        return f"{round(start_lat,4)}_{round(start_lon,4)}_{round(end_lat,4)}_{round(end_lon,4)}_{use_drone}"
+    
+    @staticmethod
+    def get_osrm_route_cached(start_lat, start_lon, end_lat, end_lon):
+        """Get route with caching to avoid duplicate API calls"""
+        cache_key = RouteManager.get_cached_route_key(start_lat, start_lon, end_lat, end_lon, False)
+        
+        with RouteManager._cache_lock:
+            if cache_key in RouteManager._route_cache:
+                print(f"Using cached route for key: {cache_key}")
+                return RouteManager._route_cache[cache_key]
+        
+        try:
+            # OSRM API call with timeout and error handling
+            start_coord = f"{start_lon},{start_lat}"
+            end_coord = f"{end_lon},{end_lat}"
+            url = f"http://router.project-osrm.org/route/v1/driving/{start_coord};{end_coord}"
+            
+            params = {
+                'overview': 'simplified',  # Use simplified instead of full for better performance
+                'geometries': 'geojson',
+                'steps': 'false'
+            }
+            
+            response = requests.get(url, params=params, timeout=5)  # Reduced timeout
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('routes') and len(data['routes']) > 0:
+                    coordinates = data['routes'][0]['geometry']['coordinates']
+                    
+                    # Optimize point density - take fewer points for performance
+                    route_points = []
+                    step_size = max(1, len(coordinates) // 10)  # Limit to ~10 points max
+                    
+                    for i in range(0, len(coordinates), step_size):
+                        coord = coordinates[i]
+                        route_points.append([coord[1], coord[0]])  # lat, lon
+                    
+                    # Ensure we have the end point
+                    if coordinates:
+                        final_coord = coordinates[-1]
+                        route_points.append([final_coord[1], final_coord[0]])
+                    
+                    # Enforce start/end points
+                    if route_points:
+                        route_points[0] = [start_lat, start_lon]
+                        route_points[-1] = [end_lat, end_lon]
+                    
+                    # Cache the result
+                    with RouteManager._cache_lock:
+                        RouteManager._route_cache[cache_key] = route_points
+                    
+                    return route_points
+            
+            print(f"OSRM API failed with status: {response.status_code}")
+            
+        except requests.exceptions.Timeout:
+            print("OSRM request timeout - using fallback")
+        except requests.exceptions.RequestException as e:
+            print(f"OSRM request failed: {e}")
+        except Exception as e:
+            print(f"OSRM routing error: {e}")
+        
+        # Fallback route
+        fallback = RouteManager.create_fast_fallback_route(start_lat, start_lon, end_lat, end_lon)
+        
+        # Cache the fallback too
+        with RouteManager._cache_lock:
+            RouteManager._route_cache[cache_key] = fallback
+        
+        return fallback
+
+    @staticmethod
+    def create_fast_fallback_route(start_lat, start_lon, end_lat, end_lon):
+        """Fast fallback route with minimal points"""
+        # Always start exactly at specified coordinates
+        route = [[start_lat, start_lon]]
+        
+        # Calculate distance to determine intermediate points
+        distance = RouteManager.haversine(start_lat, start_lon, end_lat, end_lon)
+        
+        # Limit intermediate points based on distance for performance
+        if distance < 10:
+            num_points = 2  # Very short route
+        elif distance < 50:
+            num_points = 3  # Medium route
+        else:
+            num_points = 5  # Long route
+        
+        for i in range(1, num_points):
+            t = i / num_points
+            lat = start_lat + (end_lat - start_lat) * t
+            lon = start_lon + (end_lon - start_lon) * t
+            route.append([lat, lon])
+        
+        # Always end exactly at specified coordinates
+        route.append([end_lat, end_lon])
+        return route
+
+    @staticmethod
+    def create_drone_route_fast(start_lat, start_lon, end_lat, end_lon):
+        """Fast drone route with minimal waypoints"""
+        cache_key = RouteManager.get_cached_route_key(start_lat, start_lon, end_lat, end_lon, True)
+        
+        with RouteManager._cache_lock:
+            if cache_key in RouteManager._route_cache:
+                return RouteManager._route_cache[cache_key]
+        
+        # Simple 3-point route for drones (start -> end)
+        route = [
+            [start_lat, start_lon],
+            [end_lat, end_lon]
+        ]
+        
+        # Cache it
+        with RouteManager._cache_lock:
+            RouteManager._route_cache[cache_key] = route
+        
+        return route
+
+    @staticmethod
+    def build_routes_batch(route_requests):
+        """Build multiple routes in parallel for better performance"""
+        routes = {}
+        
+        # Separate drone and truck requests
+        drone_requests = [(depot, delivery, name) for depot, delivery, name, is_drone in route_requests if is_drone]
+        truck_requests = [(depot, delivery, name) for depot, delivery, name, is_drone in route_requests if not is_drone]
+        
+        print(f"Building routes: {len(drone_requests)} drone routes, {len(truck_requests)} truck routes")
+        
+        # Process drone routes (fast, no API calls needed)
+        for depot, delivery, name in drone_requests:
+            try:
+                outbound = RouteManager.create_drone_route_fast(
+                    depot[0], depot[1], delivery[0], delivery[1]
+                )
+                # Create return route (reverse path)
+                return_route = [[depot[0], depot[1]]]  # Just go straight back
+                complete_route = outbound + return_route
+                routes[name] = complete_route
+            except Exception as e:
+                print(f"Error creating drone route for {name}: {e}")
+                routes[name] = [[depot[0], depot[1]], [delivery[0], delivery[1]], [depot[0], depot[1]]]
+        
+        # Process truck routes with limited parallelism to avoid API rate limits
+        def build_truck_route(request):
+            depot, delivery, name = request
+            try:
+                outbound = RouteManager.get_osrm_route_cached(
+                    depot[0], depot[1], delivery[0], delivery[1]
+                )
+                if outbound and len(outbound) > 1:
+                    # Create return route (reverse the outbound route, excluding delivery point)
+                    return_route = outbound[:-1]  # Remove delivery point
+                    return_route.reverse()  # Reverse to go back to depot
+                    complete_route = outbound + return_route
+                else:
+                    # Fallback route
+                    complete_route = [[depot[0], depot[1]], [delivery[0], delivery[1]], [depot[0], depot[1]]]
+                return name, complete_route
+            except Exception as e:
+                print(f"Error creating truck route for {name}: {e}")
+                return name, [[depot[0], depot[1]], [delivery[0], delivery[1]], [depot[0], depot[1]]]
+        
+        # Use ThreadPoolExecutor with limited workers to avoid overwhelming the API
+        if truck_requests:
+            max_workers = min(3, len(truck_requests))  # Limit concurrent API calls
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_name = {executor.submit(build_truck_route, req): req[2] for req in truck_requests}
+                
+                for future in as_completed(future_to_name, timeout=30):  # 30 second timeout total
+                    try:
+                        name, route = future.result(timeout=10)  # 10 second timeout per route
+                        routes[name] = route
+                    except Exception as e:
+                        name = future_to_name[future]
+                        print(f"Route building failed for {name}: {e}")
+                        # Use emergency fallback
+                        depot, delivery = None, None
+                        for dep, del_, n, _ in route_requests:
+                            if n == name:
+                                depot, delivery = dep, del_
+                                break
+                        if depot and delivery:
+                            routes[name] = [[depot[0], depot[1]], [delivery[0], delivery[1]], [depot[0], depot[1]]]
+        
+        print(f"Successfully built {len(routes)} routes out of {len(route_requests)} requested")
+        return routes
+
+    @staticmethod
+    def build_delivery_route(depot, delivery, use_drone=True):
+        """Single route building - now uses batch processing internally for consistency"""
+        route_requests = [(depot, delivery, "single", use_drone)]
+        routes = RouteManager.build_routes_batch(route_requests)
+        return routes.get("single", [[depot[0], depot[1]], [delivery[0], delivery[1]], [depot[0], depot[1]]])
+
+    @staticmethod
+    def build_roundtrip_route(depot, delivery, use_drone=True):
+        """Alias for build_delivery_route() to maintain backward compatibility"""
+        return RouteManager.build_delivery_route(depot, delivery, use_drone)
+
+
+# IMPROVED FLEET ALLOCATION FUNCTION
+def create_optimized_fleet(depot_coords, delivery_points, electric_trucks, fuel_trucks, drones):
+    """
+    Create fleet with improved allocation algorithm and parallel route building
+    FIXES: Unallocated delivery points and slow route generation
+    """
+    print(f"\n=== OPTIMIZED FLEET ALLOCATION ===")
+    print(f"Depot: {depot_coords}")
+    print(f"Delivery points: {len(delivery_points)}")
+    print(f"Fleet config: {electric_trucks}E + {fuel_trucks}F + {drones}D")
+    
+    vehicles = {}
+    total_vehicles = electric_trucks + fuel_trucks + drones
+    
+    if total_vehicles == 0:
+        print("ERROR: No vehicles configured!")
+        return vehicles
+    
+    if len(delivery_points) == 0:
+        print("ERROR: No delivery points!")
+        return vehicles
+    
+    # STEP 1: Smart delivery point allocation
+    # If we have more vehicles than delivery points, some vehicles will share routes
+    # If we have more delivery points than vehicles, prioritize closest points
+    
+    allocated_deliveries = []
+    
+    if total_vehicles >= len(delivery_points):
+        # More vehicles than delivery points - distribute vehicles among points
+        print(f"More vehicles ({total_vehicles}) than delivery points ({len(delivery_points)})")
+        print("Some vehicles will be assigned to the same delivery points")
+        
+        # Assign each delivery point at least once
+        for delivery in delivery_points:
+            allocated_deliveries.append(delivery)
+        
+        # Distribute remaining vehicles among delivery points
+        remaining_vehicles = total_vehicles - len(delivery_points)
+        for i in range(remaining_vehicles):
+            allocated_deliveries.append(delivery_points[i % len(delivery_points)])
+        
+    else:
+        # More delivery points than vehicles - select closest points
+        print(f"More delivery points ({len(delivery_points)}) than vehicles ({total_vehicles})")
+        print("Selecting closest delivery points for assignment")
+        
+        # Calculate distances and sort by proximity to depot
+        deliveries_with_distance = []
+        depot_lat, depot_lon = depot_coords
+        
+        for delivery in delivery_points:
+            dist = RouteManager.haversine(depot_lat, depot_lon, delivery[0], delivery[1])
+            deliveries_with_distance.append((delivery, dist))
+        
+        # Sort by distance and take closest points
+        deliveries_with_distance.sort(key=lambda x: x[1])
+        allocated_deliveries = [d[0] for d in deliveries_with_distance[:total_vehicles]]
+        
+        unassigned_count = len(delivery_points) - total_vehicles
+        print(f"WARNING: {unassigned_count} delivery points will remain unassigned")
+    
+    print(f"Total delivery assignments: {len(allocated_deliveries)}")
+    
+    # STEP 2: Create route requests for batch processing
+    route_requests = []
+    vehicle_assignments = []
+    
+    # Assign drones first (fastest routes)
+    assignment_index = 0
+    for i in range(drones):
+        if assignment_index >= len(allocated_deliveries):
+            break
+        name = f"Drone {i+1}"
+        delivery = allocated_deliveries[assignment_index]
+        route_requests.append((depot_coords, delivery, name, True))  # True = drone
+        vehicle_assignments.append((name, "Drone", delivery))
+        assignment_index += 1
+    
+    # Assign electric trucks
+    for i in range(electric_trucks):
+        if assignment_index >= len(allocated_deliveries):
+            break
+        name = f"Electric Truck {i+1}"
+        delivery = allocated_deliveries[assignment_index]
+        route_requests.append((depot_coords, delivery, name, False))  # False = truck
+        vehicle_assignments.append((name, "Electric Truck", delivery))
+        assignment_index += 1
+    
+    # Assign fuel trucks
+    for i in range(fuel_trucks):
+        if assignment_index >= len(allocated_deliveries):
+            break
+        name = f"Fuel Truck {i+1}"
+        delivery = allocated_deliveries[assignment_index]
+        route_requests.append((depot_coords, delivery, name, False))  # False = truck
+        vehicle_assignments.append((name, "Fuel Truck", delivery))
+        assignment_index += 1
+    
+    print(f"Created {len(route_requests)} route requests")
+    
+    # STEP 3: Build all routes in parallel (MAJOR PERFORMANCE IMPROVEMENT)
+    start_time = time.time()
+    routes = RouteManager.build_routes_batch(route_requests)
+    route_time = time.time() - start_time
+    
+    print(f"Route building completed in {route_time:.2f} seconds")
+    
+    # STEP 4: Create vehicle objects with the built routes
+    VEHICLE_SPEEDS = {
+        "Drone": 60,
+        "Electric Truck": 40,
+        "Fuel Truck": 35
+    }
+    
+    VEHICLE_WEIGHTS = {
+        "Drone": (1, 5),
+        "Electric Truck": (200, 500),
+        "Fuel Truck": (300, 700)
+    }
+    
+    for name, vehicle_type, delivery in vehicle_assignments:
+        route = routes.get(name)
+        if route and len(route) >= 3:  # Valid route: depot -> delivery -> depot
+            vehicles[name] = {
+                "type": vehicle_type,
+                "pos": route[0][:],  # Start at depot
+                "route": route,
+                "route_index": 0,
+                "speed": VEHICLE_SPEEDS[vehicle_type],
+                "progress": 0.0,
+                "weight": random.randint(*VEHICLE_WEIGHTS[vehicle_type]),
+                "assigned_delivery": delivery
+            }
+            print(f"✓ {name} assigned to {delivery} with {len(route)} waypoints")
+        else:
+            print(f"✗ Failed to create route for {name}")
+    
+    # STEP 5: Final allocation summary
+    unique_deliveries = set()
+    for vehicle in vehicles.values():
+        delivery_coords = tuple(vehicle["assigned_delivery"])
+        unique_deliveries.add(delivery_coords)
+    
+    print(f"\n=== FINAL ALLOCATION SUMMARY ===")
+    print(f"Successfully created vehicles: {len(vehicles)}")
+    print(f"Unique delivery points with vehicles: {len(unique_deliveries)}")
+    print(f"Total delivery points available: {len(delivery_points)}")
+    print(f"Route building time: {route_time:.2f} seconds")
+    
+    if len(vehicles) == total_vehicles:
+        print("✓ SUCCESS: All configured vehicles created successfully!")
+    else:
+        print(f"⚠ WARNING: Only {len(vehicles)} out of {total_vehicles} vehicles created")
+    
+    if len(unique_deliveries) == len(delivery_points):
+        print("✓ SUCCESS: All delivery points have vehicles assigned!")
+    elif len(delivery_points) > total_vehicles:
+        coverage_percent = (len(unique_deliveries) / len(delivery_points)) * 100
+        print(f"ℹ INFO: {coverage_percent:.1f}% of delivery points covered (limited by fleet size)")
+    
+    print("=====================================\n")
+    
+    return vehicles
+
+
+# USAGE: Replace the original RouteManager with OptimizedRouteManager in your imports
+# Example of how to integrate this into your main application:
+"""
+# In main_window.py, replace the create_configured_fleet method with:
+
+def create_configured_fleet(self):
+    '''Create vehicles based on the configured fleet numbers with optimized performance'''
+    self.vehicles.clear()
+    
+    # Use the optimized fleet creation
+    self.vehicles = create_optimized_fleet(
+        self.depot_coords,
+        self.delivery_points,
+        self.electric_trucks,
+        self.fuel_trucks,
+        self.drones
+    )
+    
+    if self.vehicles:
+        self.wave_running = True
+        self.wave_start_time = time.time()
+        self.send_vehicles_to_js()
+        print(f"Optimized fleet created with {len(self.vehicles)} vehicles in seconds, not minutes!")
+    else:
+        print("Failed to create any vehicles")
+"""

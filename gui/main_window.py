@@ -534,8 +534,8 @@ class IndiaAirspaceMap(QMainWindow):
             "Configuration Updated", 
             f"Depot and fleet configuration updated:\n\n"
             f"🚩 Depot Location:\n   Latitude: {lat:.6f}\n   Longitude: {lng:.6f}\n\n"
-            f"📦 Customer Count: {customer_count}\n\n"
-            f"🚚 Fleet Configuration:\n"
+            f" Customer Count: {customer_count}\n\n"
+            f" Fleet Configuration:\n"
             f"   • Electric Trucks: {electric_trucks}\n"
             f"   • Fuel Trucks: {fuel_trucks}\n"
             f"   • Drones: {drones}\n"
